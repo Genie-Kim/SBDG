@@ -197,17 +197,16 @@ class MultipleEnvironmentImageFolder(MultipleDomainDataset):
         for i, environment in enumerate(environments):
 
             if augment and (i not in test_envs):
-                env_transform = augment_transform
+                env_transform = augment_transform # target domain이 아닌 경우
             else:
-                env_transform = transform
+                env_transform = transform # target domain 인 경우
 
             path = os.path.join(root, environment)
-            env_dataset = ImageFolder(path,
-                transform=env_transform)
+            env_dataset = ImageFolder(path, transform=env_transform) # folder구조가 class/instance 이런 순서로 되어 있을때, 씀.)
 
             self.datasets.append(env_dataset)
 
-        self.input_shape = (3, 224, 224,)
+        self.input_shape = (3, 224, 224,) # by resizing
         self.num_classes = len(self.datasets[-1].classes)
 
 class VLCS(MultipleEnvironmentImageFolder):

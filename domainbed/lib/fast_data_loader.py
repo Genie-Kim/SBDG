@@ -16,13 +16,13 @@ class InfiniteDataLoader:
     def __init__(self, dataset, weights, batch_size, num_workers):
         super().__init__()
 
-        if weights:
+        if weights: # class balance weight (weight을 줘서 더 많이 sample하려는듯)
             sampler = torch.utils.data.WeightedRandomSampler(weights,
                 replacement=True,
                 num_samples=batch_size)
         else:
             sampler = torch.utils.data.RandomSampler(dataset,
-                replacement=True)
+                replacement=True) # replacement가 true가 되면 shuffle과는 달라진다. 뽑은거 또 뽑는거.
 
         if weights == None:
             weights = torch.ones(len(dataset))

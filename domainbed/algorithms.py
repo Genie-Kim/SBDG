@@ -64,7 +64,7 @@ class ERM(Algorithm):
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(ERM, self).__init__(input_shape, num_classes, num_domains,
                                   hparams)
-        self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        self.featurizer = networks.Featurizer(input_shape, self.hparams)# feature extractor만 뺀거.
         self.classifier = nn.Linear(self.featurizer.n_outputs, num_classes)
         self.network = nn.Sequential(self.featurizer, self.classifier)
         self.optimizer = torch.optim.Adam(

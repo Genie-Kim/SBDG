@@ -39,7 +39,7 @@ if __name__ == "__main__":
         help='Number of steps. Default is dataset-dependent.')
     parser.add_argument('--checkpoint_freq', type=int, default=None,
         help='Checkpoint every N steps. Default is dataset-dependent.')
-    parser.add_argument('--test_envs', type=int, nargs='+', default=[0])
+    parser.add_argument('--test_envs', type=int, nargs='+', default=[0]) # 도메인 이름 알파벳으로 소팅하고 난뒤 index로 타겟 도메인 지
     parser.add_argument('--output_dir', type=str, default="train_output")
     parser.add_argument('--holdout_fraction', type=float, default=0.2)
     parser.add_argument('--skip_model_save', action='store_true')
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     for k, v in sorted(vars(args).items()):
         print('\t{}: {}'.format(k, v))
 
-    if args.hparams_seed == 0:
+    if args.hparams_seed == 0: # default hyper parameter
         hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
     else:
         hparams = hparams_registry.random_hparams(args.algorithm, args.dataset,
@@ -91,19 +91,17 @@ if __name__ == "__main__":
         device = "cpu"
 
     if args.dataset in vars(datasets):
-        dataset = vars(datasets)[args.dataset](args.data_dir,
-            args.test_envs, hparams)
+        dataset = vars(datasets)[args.dataset](args.data_dir,args.test_envs, hparams) # 해당 데이터셋에 해당하는 클래스를 반환. (root, target domain, hyper parameter)
     else:
         raise NotImplementedError
 
     # Split each env into an 'in-split' and an 'out-split'. We'll train on
     # each in-split except the test envs, and evaluate on all splits.
-    in_splits = []
-    out_splits = []
+    in_splits = [] # train dataset instances of each domains
+    out_splits = [] # test dataset instances of each domains spliting by args.holdout_fraction
     for env_i, env in enumerate(dataset):
-        out, in_ = misc.split_dataset(env,
-            int(len(env)*args.holdout_fraction),
-            misc.seed_hash(args.trial_seed, env_i))
+        # out은 해당 domain에서 holdout_fraction만큼 데이터를 떼서 만든 dataset instance이다. in_은 그걸 제외하고 나머지를 dataset instance로 만듦.
+        out, in_ = misc.split_dataset(env, int(len(env)*args.holdout_fraction), misc.seed_hash(args.trial_seed, env_i))
         if hparams['class_balanced']:
             in_weights = misc.make_weights_for_balanced_classes(in_)
             out_weights = misc.make_weights_for_balanced_classes(out)
@@ -119,12 +117,13 @@ if __name__ == "__main__":
         num_workers=dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(in_splits)
         if i not in args.test_envs]
-
+    # fast loader는 좀더 빨라졌다 뿐, infinite data loader와 비슷하다.
+    # eval_loaders는 domain 이 6개면 12개의 dataset loader가 들어간다. target domain 안빠짐.
     eval_loaders = [FastDataLoader(
         dataset=env,
         batch_size=64,
         num_workers=dataset.N_WORKERS)
-        for env, _ in (in_splits + out_splits)]
+        for env, _ in (in_splits + out_splits)] # 한 도메인의 support set과 query set을 다 eval loader로 넣음
     eval_weights = [None for _, weights in (in_splits + out_splits)]
     eval_loader_names = ['env{}_in'.format(i)
         for i in range(len(in_splits))]
@@ -140,33 +139,34 @@ if __name__ == "__main__":
 
     algorithm.to(device)
 
-    train_minibatches_iterator = zip(*train_loaders)
-    checkpoint_vals = collections.defaultdict(lambda: [])
+    train_minibatches_iterator = zip(*train_loaders) # source domain의 loader를 묶는다.
+    checkpoint_vals = collections.defaultdict(lambda: []) # time과 같은 부수적인 결과물 dict로 저장.
 
-    steps_per_epoch = min([len(env)/hparams['batch_size'] for env,_ in in_splits])
+    steps_per_epoch = min([len(env)/hparams['batch_size'] for env,_ in in_splits]) # domain중에서 가장 작은 도메인 / batch size를 epoch의 iteration 개수로 잡음.
 
     n_steps = args.steps or dataset.N_STEPS
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
 
     last_results_keys = None
-    for step in range(start_step, n_steps):
+    for step in range(start_step, n_steps): # iteration, epoch개념이 따로 없고 데이터셋 숫자로 계산하는 개념이 됨.
         step_start_time = time.time()
+        # 각 source도메인 마다 (이미지 x batch 개수,라벨 x batch개수) 튜플을 생성하여 source 도메인 개수만큼 만들고 그걸 리스트로 만든다. 배치 개수는 hparams_registry.py 19째 줄에 기록됨.
         minibatches_device = [(x.to(device), y.to(device))
             for x,y in next(train_minibatches_iterator)]
-        step_vals = algorithm.update(minibatches_device)
+        step_vals = algorithm.update(minibatches_device) # forward the algorithm 알고리즘 네트워크 업데이트 부분. step_vals에는 {'loss': 11.7731}같은 것들이 나옴.
         checkpoint_vals['step_time'].append(time.time() - step_start_time)
 
         for key, val in step_vals.items():
             checkpoint_vals[key].append(val)
 
-        if step % checkpoint_freq == 0:
+        if step % checkpoint_freq == 0: # validation step
             results = {
                 'step': step,
                 'epoch': step / steps_per_epoch,
             }
 
             for key, val in checkpoint_vals.items():
-                results[key] = np.mean(val)
+                results[key] = np.mean(val) # result에는 한번 iteration하는데 걸리는 시간이라던가 loss값의 mean이 들어간다.
 
             evals = zip(eval_loader_names, eval_loaders, eval_weights)
             for name, loader, weights in evals:
