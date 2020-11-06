@@ -3,6 +3,7 @@ import pandas as pd
 
 # column is domain, row is class, here class will be index
 df = pd.read_csv('/home/genie/1hddc/DG dataset/domainnet/domainnet.csv', index_col=0)
+# df = pd.read_csv('/home/genie/domainnet_test.csv', index_col=0)
 
 
 

@@ -1,5 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-
+import pandas as pd
 import os
 import torch
 from PIL import Image, ImageFile
@@ -8,6 +8,9 @@ import torchvision.datasets.folder
 from torch.utils.data import TensorDataset
 from torchvision.datasets import MNIST, ImageFolder
 from torchvision.transforms.functional import rotate
+import datetime
+import domainbed.lib.imbalance as imb
+import math
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -25,6 +28,8 @@ DATASETS = [
     "TerraIncognita",
     "DomainNet",
     "SVIRO",
+        # Imbalance
+    "Imbalance_DomainNet"
 ]
 
 def get_dataset_class(dataset_name):
@@ -229,6 +234,49 @@ class DomainNet(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "domain_net/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+#
+# class Imbalance_DomainNet(MultipleDomainDataset):
+#     CHECKPOINT_FREQ = 1000
+#     ENVIRONMENTS = ["clip", "info", "paint", "quick", "real", "sketch"]
+#     def __init__(self, imbalance_csv_path, test_envs, hparams):
+#         self.dir = os.path.join(root, "domain_net/")
+#         super().__init__()
+#         environments = [f.name for f in os.scandir(root) if f.is_dir()]
+#         environments = sorted(environments)
+#
+#         transform = transforms.Compose([
+#             transforms.Resize((224, 224)),
+#             transforms.ToTensor(),
+#             transforms.Normalize(
+#                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+#         ])
+#
+#         augment_transform = transforms.Compose([
+#             # transforms.Resize((224,224)),
+#             transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
+#             transforms.RandomHorizontalFlip(),
+#             transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
+#             transforms.RandomGrayscale(),
+#             transforms.ToTensor(),
+#             transforms.Normalize(
+#                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+#         ])
+#
+#         self.datasets = []
+#         for i, environment in enumerate(environments):
+#
+#             if augment and (i not in test_envs):
+#                 env_transform = augment_transform  # target domain이 아닌 경우
+#             else:
+#                 env_transform = transform  # target domain 인 경우
+#
+#             path = os.path.join(root, environment)
+#             env_dataset = ImageFolder(path, transform=env_transform)  # folder구조가 class/instance 이런 순서로 되어 있을때, 씀.)
+#
+#             self.datasets.append(env_dataset)
+#
+#         self.input_shape = (3, 224, 224,)  # by resizing
+#         self.num_classes = len(self.datasets[-1].classes)
 
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300

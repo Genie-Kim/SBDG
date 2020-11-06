@@ -91,7 +91,7 @@ if __name__ == "__main__":
         device = "cpu"
 
     if args.dataset in vars(datasets):
-        dataset = vars(datasets)[args.dataset](args.data_dir,args.test_envs, hparams) # 해당 데이터셋에 해당하는 클래스를 반환. (root, target domain, hyper parameter)
+        dataset = vars(datasets)[args.dataset](args.data_dir,args.test_envs, hparams) # 해당 데이터셋에 해당하는 클래스 instance를 반환. (root, target domain, hyper parameter)
     else:
         raise NotImplementedError
 

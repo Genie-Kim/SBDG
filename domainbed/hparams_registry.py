@@ -8,6 +8,7 @@ def _hparams(algorithm, dataset, random_state):
     New algorithms / networks / etc. should add entries here.
     """
     SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
+    IMBALANCE = ['Imbalance_DomainNet']
 
     hparams = {}
     
@@ -15,6 +16,13 @@ def _hparams(algorithm, dataset, random_state):
     hparams['resnet18'] = (False, False)
     hparams['resnet_dropout'] = (0., random_state.choice([0., 0.1, 0.5]))
     hparams['class_balanced'] = (False, False)
+
+    if dataset in IMBALANCE: # for imbalance dataset(no random version support)
+        hparams['class_or_domain'] = ('domain',None) # make domain imbalance
+        hparams['num_cls'] = (3,None) # dataset will have 3 class.(More images can be used instead of smaller class)
+        hparams['test_rate'] = (0.2,None) # test set rate of Imbalance dataset
+        hparams['imbalance'] = (10,None) # The degree of imbalance, expressed as a major/minor value.
+        hparams['minor_domain'] = (5,None)
 
     if dataset not in SMALL_IMAGES:
         hparams['lr'] = (5e-5, 10**random_state.uniform(-5, -3.5))

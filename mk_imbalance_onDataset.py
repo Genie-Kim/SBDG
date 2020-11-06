@@ -8,10 +8,14 @@ def mk_imbalance_datalist(img_dataset_path,csv_pandas,target_domain):
     # img_dataset_path/domain/class/ 안에 이미지들이 있는 구조.
     # source_domain to be imbalanced dataset.
     # dom_cls_sampled_path에는 target doamin과 sampling된 source domain의 이미지들이 들어있다.
+    domains = csv_pandas.columns.to_list()
+    source_domain = domains
+    if len(target_domain) !=0:
+        domains.pop(target_domain)
 
-    source_domain = csv_pandas.index.to_list()
-    classes = csv_pandas.columns.to_list()
-    domains = source_domain+target_domain
+    classes = csv_pandas.index.to_list()
+
+
     dom_cls_comb_list = [(x, i) for x in domains for i in classes]
     dom_cls_sampled_path = dict.fromkeys(dom_cls_comb_list)
 
@@ -28,7 +32,7 @@ def mk_imbalance_datalist(img_dataset_path,csv_pandas,target_domain):
                     print('there is item which is not file in',temp)
 
             if domain in source_domain:
-                dom_cls_sample_limit = int(csv_pandas.loc[domain, cls])
+                dom_cls_sample_limit = int(csv_pandas.loc[cls, domain])
                 if len(imgpath) < dom_cls_sample_limit:
                     print(domain +', '+ cls + ' data sample is Not enough, So oversampling..')
                 sampled_imgpath = random.choices(imgpath,k=dom_cls_sample_limit)
@@ -69,16 +73,16 @@ def copy_struct_bysampled_data(dom_cls_sampled_path, save_copy_path, csv_pandas)
 
 if __name__ == '__main__':
 
-    img_dataset_path = os.path.expanduser('~/pacs_dataset/Raw images/kfold/')
-    imbalance_csv_path = os.path.expanduser('~/pacs_dataset/balanced.csv')
-    split_idx = 3 # domain number
-    saving_path = os.path.expanduser('~/pacs_dataset/Raw images/balanced')
+    # img_dataset_path = os.path.expanduser('~/pacs_dataset/Raw images/kfold/')
+    # imbalance_csv_path = os.path.expanduser('~/pacs_dataset/balanced.csv')
+    img_dataset_path = os.path.expanduser('/home/genie/2hddb/dg_dataset/domain_net')
+    imbalance_csv_path = os.path.expanduser('~/domainnet_test.csv')
 
-    domains = ['art_painting', 'cartoon', 'photo', 'sketch']
-    # classes = ['dog', 'elephant', 'giraffe', 'guitar', 'horse', 'house', 'person']
 
-    target_domain = [domains.pop(split_idx)]
-    source_domain = domains
+    # saving_path = os.path.expanduser('~/pacs_dataset/Raw images/balanced')
+    saving_path = os.path.expanduser('/home/genie/2hddb/dg_dataset/domain_net_test')
+
+    target_domain = []
 
     csv_pandas = pd.read_csv(imbalance_csv_path, index_col=0) # column index = source domain, row index = classes
 
