@@ -263,8 +263,7 @@ class ImbalanceDomainNet(DomainNet):
         # root is default dg dataset path.
         # target_domains is target domains list by number of sorted domain list
         super().__init__(root, target_domains, hparams)
-
-        self.imb_csv_folder_path = os.path.join(hparams['imb_output_path'],'_'.join([hparams['dataset_version'],'dataset',self.ORIGINDATA,'numcls',str(hparams['numcls']),'testrate',str(hparams['testrate']).replace('.','')]))
+        self.imb_csv_folder_path = os.path.abspath(os.path.join(hparams['imb_output_path'],'_'.join([hparams['dataset_version'],'dataset',self.ORIGINDATA,'numcls',str(hparams['numcls']),'testrate',str(hparams['testrate']).replace('.','')])))
         train_csv_path = os.path.join(self.imb_csv_folder_path,'train.csv')
         minor_domain = hparams['minor']
         imbalance_rate = hparams['imbrate']
@@ -274,7 +273,7 @@ class ImbalanceDomainNet(DomainNet):
             ['imb', 'targets', targets_name, 'minor', str(minor_domain), 'imbrate', str(imbalance_rate), 'clsordom',
              class_or_domain])+'.csv')
 
-        if os.path.isfile(train_csv_path): # if train.csv does not exist for this setting.
+        if not os.path.isfile(train_csv_path): # if train.csv does not exist for this setting.
             assert False, train_csv_path +' does not exist, so make the file'
 
         # get imbalance dataframe imb_df : column : dom, cls, img(imagepath).
@@ -283,12 +282,14 @@ class ImbalanceDomainNet(DomainNet):
             imb_df = pd.read_csv(self.imb_csv_path)
         else:
             print(self.imb_csv_path, ' is not exist and make the csv file.')
+            if minor_domain in target_domains:
+                assert False, 'minor domain is in target domains'
             for x in target_domains + [minor_domain]:
                 if x not in [i for i in range(len(self.ENVIRONMENTS))]:
                     assert False, 'target of minor domain index does not correct'
             train_df = pd.read_csv(train_csv_path)
             imb_df = csv_to_imbalance_csv(train_df, class_or_domain,imbalance_rate, minor_domain, target_domains)
-            imb_df.to_csv(self.imb_csv_path)
+            imb_df.to_csv(self.imb_csv_path,index=False)
 
         # changing mother's self.datasets instances.
         domain_list = imb_df.groupby('dom').count().index.to_list()

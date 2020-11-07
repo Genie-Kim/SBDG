@@ -81,7 +81,7 @@ if __name__ == "__main__":
         hparams['numcls'] = 3 # class number want to remain
 
         hparams['imbrate'] = 10 # The degree of imbalance, expressed as a major/minor value.
-        hparams['minor'] = 5
+        hparams['minor'] = 3
 
     if args.hparams:
         hparams.update(json.loads(args.hparams))

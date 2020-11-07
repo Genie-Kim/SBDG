@@ -26,7 +26,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['clsordom'] = ('domain','domain')  # make domain imbalance
         hparams['imbrate'] = (10,10)  # The degree of imbalance, expressed as a major/minor value.
         hparams['minor'] = (5,5)
-        hparams['imb_output_path']=('../imbalance_result_output','../imbalance_result_output') # script폴더 안에 있는 코드 돌릴때 기준임.
+        hparams['imb_output_path']=('./domainbed/imbalance_result_output','domainbed/imbalance_result_output') # 프로젝트 맨 상위 폴더에서 python -m으로 돌릴때..
 
     if dataset not in SMALL_IMAGES:
         hparams['lr'] = (5e-5, 10**random_state.uniform(-5, -3.5))
