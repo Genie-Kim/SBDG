@@ -20,6 +20,7 @@ from domainbed import hparams_registry
 from domainbed import algorithms
 from domainbed.lib import misc
 from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
+from tqdm import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
@@ -72,6 +73,16 @@ if __name__ == "__main__":
     else:
         hparams = hparams_registry.random_hparams(args.algorithm, args.dataset,
             misc.seed_hash(args.hparams_seed, args.trial_seed))
+
+    if args.dataset in hparams_registry.IMBALANCE:
+        hparams['dataset_version'] = '20201107180355'
+        hparams['clsordom'] = 'domain'  # make domain imbalance
+        hparams['testrate'] = 0.2
+        hparams['numcls'] = 3 # class number want to remain
+
+        hparams['imbrate'] = 10 # The degree of imbalance, expressed as a major/minor value.
+        hparams['minor'] = 5
+
     if args.hparams:
         hparams.update(json.loads(args.hparams))
 
@@ -90,8 +101,9 @@ if __name__ == "__main__":
     else:
         device = "cpu"
 
-    if args.dataset in vars(datasets):
-        dataset = vars(datasets)[args.dataset](args.data_dir,args.test_envs, hparams) # 해당 데이터셋에 해당하는 클래스 instance를 반환. (root, target domain, hyper parameter)
+    if args.dataset in vars(datasets):# for normal domain generalization dataset
+        # 해당 데이터셋에 해당하는 클래스 instance를 반환. (root, target domain, hyper parameter)
+        dataset = vars(datasets)[args.dataset](args.data_dir,args.test_envs, hparams)
     else:
         raise NotImplementedError
 
@@ -148,7 +160,7 @@ if __name__ == "__main__":
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
 
     last_results_keys = None
-    for step in range(start_step, n_steps): # iteration, epoch개념이 따로 없고 데이터셋 숫자로 계산하는 개념이 됨.
+    for step in tqdm(range(start_step, n_steps)): # iteration, epoch개념이 따로 없고 데이터셋 숫자로 계산하는 개념이 됨.
         step_start_time = time.time()
         # 각 source도메인 마다 (이미지 x batch 개수,라벨 x batch개수) 튜플을 생성하여 source 도메인 개수만큼 만들고 그걸 리스트로 만든다. 배치 개수는 hparams_registry.py 19째 줄에 기록됨.
         minibatches_device = [(x.to(device), y.to(device))
@@ -175,6 +187,7 @@ if __name__ == "__main__":
 
             results_keys = sorted(results.keys())
             if results_keys != last_results_keys:
+                print('\n')
                 misc.print_row(results_keys, colwidth=12)
                 last_results_keys = results_keys
             misc.print_row([results[key] for key in results_keys],

@@ -2,13 +2,14 @@
 
 import numpy as np
 
+SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
+IMBALANCE = ['ImbalanceDomainNet']
+
 def _hparams(algorithm, dataset, random_state):
     """
     Global registry of hyperparams. Each entry is a (default, random) tuple.
     New algorithms / networks / etc. should add entries here.
     """
-    SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
-    IMBALANCE = ['Imbalance_DomainNet']
 
     hparams = {}
     
@@ -18,11 +19,14 @@ def _hparams(algorithm, dataset, random_state):
     hparams['class_balanced'] = (False, False)
 
     if dataset in IMBALANCE: # for imbalance dataset(no random version support)
-        hparams['class_or_domain'] = ('domain',None) # make domain imbalance
-        hparams['num_cls'] = (3,None) # dataset will have 3 class.(More images can be used instead of smaller class)
-        hparams['test_rate'] = (0.2,None) # test set rate of Imbalance dataset
-        hparams['imbalance'] = (10,None) # The degree of imbalance, expressed as a major/minor value.
-        hparams['minor_domain'] = (5,None)
+        hparams['dataset_version'] = ('20201107180355','20201107180355')
+        hparams['numcls'] = (3,3)
+        hparams['testrate'] = (0.2,0.2)
+
+        hparams['clsordom'] = ('domain','domain')  # make domain imbalance
+        hparams['imbrate'] = (10,10)  # The degree of imbalance, expressed as a major/minor value.
+        hparams['minor'] = (5,5)
+        hparams['imb_output_path']=('../imbalance_result_output','../imbalance_result_output') # script폴더 안에 있는 코드 돌릴때 기준임.
 
     if dataset not in SMALL_IMAGES:
         hparams['lr'] = (5e-5, 10**random_state.uniform(-5, -3.5))

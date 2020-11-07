@@ -1,16 +1,15 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-import pandas as pd
+
 import os
 import torch
 from PIL import Image, ImageFile
 from torchvision import transforms
-import torchvision.datasets.folder
 from torch.utils.data import TensorDataset
 from torchvision.datasets import MNIST, ImageFolder
 from torchvision.transforms.functional import rotate
+import pandas as pd
 import datetime
-import domainbed.lib.imbalance as imb
-import math
+from domainbed.lib.imbalance import *
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -29,7 +28,7 @@ DATASETS = [
     "DomainNet",
     "SVIRO",
         # Imbalance
-    "Imbalance_DomainNet"
+    "ImbalanceDomainNet"
 ]
 
 def get_dataset_class(dataset_name):
@@ -162,8 +161,7 @@ class RotatedMNIST(MultipleEnvironmentMNIST):
     def rotate_dataset(self, images, labels, angle):
         rotation = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Lambda(lambda x: rotate(x, angle, fill=(0,),
-                                               resample=Image.BICUBIC)),
+            transforms.Lambda(lambda x: rotate(x, angle, fill=(0,), resample=Image.BICUBIC)),
             transforms.ToTensor()])
 
         x = torch.zeros(len(images), 1, 28, 28)
@@ -234,49 +232,6 @@ class DomainNet(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "domain_net/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
-#
-# class Imbalance_DomainNet(MultipleDomainDataset):
-#     CHECKPOINT_FREQ = 1000
-#     ENVIRONMENTS = ["clip", "info", "paint", "quick", "real", "sketch"]
-#     def __init__(self, imbalance_csv_path, test_envs, hparams):
-#         self.dir = os.path.join(root, "domain_net/")
-#         super().__init__()
-#         environments = [f.name for f in os.scandir(root) if f.is_dir()]
-#         environments = sorted(environments)
-#
-#         transform = transforms.Compose([
-#             transforms.Resize((224, 224)),
-#             transforms.ToTensor(),
-#             transforms.Normalize(
-#                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-#         ])
-#
-#         augment_transform = transforms.Compose([
-#             # transforms.Resize((224,224)),
-#             transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
-#             transforms.RandomHorizontalFlip(),
-#             transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
-#             transforms.RandomGrayscale(),
-#             transforms.ToTensor(),
-#             transforms.Normalize(
-#                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-#         ])
-#
-#         self.datasets = []
-#         for i, environment in enumerate(environments):
-#
-#             if augment and (i not in test_envs):
-#                 env_transform = augment_transform  # target domain이 아닌 경우
-#             else:
-#                 env_transform = transform  # target domain 인 경우
-#
-#             path = os.path.join(root, environment)
-#             env_dataset = ImageFolder(path, transform=env_transform)  # folder구조가 class/instance 이런 순서로 되어 있을때, 씀.)
-#
-#             self.datasets.append(env_dataset)
-#
-#         self.input_shape = (3, 224, 224,)  # by resizing
-#         self.num_classes = len(self.datasets[-1].classes)
 
 class OfficeHome(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
@@ -298,3 +253,51 @@ class SVIRO(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "sviro/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
+class ImbalanceDomainNet(DomainNet):
+    CHECKPOINT_FREQ = 1000
+    ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
+    ORIGINDATA = 'DomainNet'
+
+    def __init__(self, root, target_domains, hparams):
+        # root is default dg dataset path.
+        # target_domains is target domains list by number of sorted domain list
+        super().__init__(root, target_domains, hparams)
+
+        self.imb_csv_folder_path = os.path.join(hparams['imb_output_path'],'_'.join([hparams['dataset_version'],'dataset',self.ORIGINDATA,'numcls',str(hparams['numcls']),'testrate',str(hparams['testrate']).replace('.','')]))
+        train_csv_path = os.path.join(self.imb_csv_folder_path,'train.csv')
+        minor_domain = hparams['minor']
+        imbalance_rate = hparams['imbrate']
+        class_or_domain = hparams['clsordom']
+        targets_name = ''.join([str(x) for x in target_domains])
+        self.imb_csv_path = os.path.join(self.imb_csv_folder_path, '_'.join(
+            ['imb', 'targets', targets_name, 'minor', str(minor_domain), 'imbrate', str(imbalance_rate), 'clsordom',
+             class_or_domain])+'.csv')
+
+        if os.path.isfile(train_csv_path): # if train.csv does not exist for this setting.
+            assert False, train_csv_path +' does not exist, so make the file'
+
+        # get imbalance dataframe imb_df : column : dom, cls, img(imagepath).
+        if os.path.isfile(self.imb_csv_path): # if csv file already exist, there is same setting csv file
+            print(self.imb_csv_path,' already exist')
+            imb_df = pd.read_csv(self.imb_csv_path)
+        else:
+            print(self.imb_csv_path, ' is not exist and make the csv file.')
+            for x in target_domains + [minor_domain]:
+                if x not in [i for i in range(len(self.ENVIRONMENTS))]:
+                    assert False, 'target of minor domain index does not correct'
+            train_df = pd.read_csv(train_csv_path)
+            imb_df = csv_to_imbalance_csv(train_df, class_or_domain,imbalance_rate, minor_domain, target_domains)
+            imb_df.to_csv(self.imb_csv_path)
+
+        # changing mother's self.datasets instances.
+        domain_list = imb_df.groupby('dom').count().index.to_list()
+        for idx, domain in enumerate(domain_list):
+            dom_df = imb_df[imb_df['dom'] == domain]
+            self.datasets[idx].classes = dom_df.groupby('cls').count().index.to_list()
+            self.datasets[idx].class_to_idx = {k:v for v,k in enumerate(self.datasets[idx].classes)}
+            self.datasets[idx].imgs = [(p,self.datasets[idx].class_to_idx[c]) for d,c,p in dom_df.values.tolist()]
+            self.datasets[idx].samples = list.copy(self.datasets[idx].imgs)
+            self.datasets[idx].targets = [c_id for p,c_id in self.datasets[idx].imgs]
+        self.num_classes = len(self.datasets[-1].classes)
+

@@ -1,7 +1,10 @@
 import argparse
 from domainbed import datasets
 import pandas as pd
-
+import os
+import datetime
+import torch
+from torchvision.datasets import ImageFolder
 
 """
 function about imbalance datasets with pandas dataframe
@@ -58,7 +61,9 @@ def remaincls_numimgs_df(dom_cls_table, num_cls):
 
 
 def csv_to_imbalance_csv(train_df, class_or_domain,imbalance_rate,minor_domain,target_doms):
-
+    # minor_domain is number
+    # target doms is number of list
+    # 1 <  imbalance_rate
     dom_list = train_df.groupby(by='dom').count().index.to_list()
     dom_to_idx = {k:v for v,k in enumerate(dom_list)}
     source_doms = [x for x in range(len(dom_list)) if x not in target_doms] # source domain numbering.
@@ -66,7 +71,7 @@ def csv_to_imbalance_csv(train_df, class_or_domain,imbalance_rate,minor_domain,t
     if class_or_domain == 'domain':
         # make domain imbalance
         if minor_domain not in list(range(len(dom_list))):
-            assert False, 'minor domain selection is wrong number on hparam'
+            assert False, 'minor domain selection is wrong number'
         elif minor_domain in target_doms:
             assert False, 'minor domain is target domain!!'
 
@@ -89,9 +94,9 @@ def csv_to_imbalance_csv(train_df, class_or_domain,imbalance_rate,minor_domain,t
         imb_list, _ = sampling_from_pivotdict(temp_pivotdict, train_df)
 
         imb_df = pd.DataFrame(imb_list, columns=['dom', 'cls', 'img'])
-        print('imbalance dataset count table of imbalance dataset')
+        print('####imbalance dataset count table of imbalance dataset######')
         print(imb_df.pivot_table(index='cls', columns='dom', aggfunc='count'))
-
+        print('############################################################')
         return imb_df
 
 
@@ -188,34 +193,35 @@ if __name__ == '__main__':
     parser.add_argument('--test_rate', type=float, default=0.2)
     parser.add_argument('--minor_domain', type=int, default=3)
     parser.add_argument('--target_doms', type=int, nargs='+', default=[0])  # 도메인 이름 알파벳으로 소팅하고 난뒤 index로 타겟 도메인 지
-    parser.add_argument('--output_dir', type=str, default="../imbalance_dataset_output")
+    parser.add_argument('--output_dir', type=str, default="../imbalance_result_output")
     parser.add_argument('--dataroot_dir', type=str,default="/home/genie/2hddb/dg_dataset")
-    parser.add_argument('--train_csv', type=str,default="../imbalance_dataset_output/20201106_031951_train_DomainNet_forImbalance.csv")
+    parser.add_argument('--train_csv', type=str,default="/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/20201107180355_dataset_DomainNet_numcls_3_testrate_02/train.csv")
     parser.add_argument('--dataset', choices=datasets.DATASETS)
     parser.add_argument('--imb_type', choices=['class','domain']) # 'class_or_domain' -> imb_type
     args = parser.parse_args()
 
-    import os
-    import datetime
-    import torch
-    from torchvision.datasets import ImageFolder
+
 
     if args.command == 'totalnew':
-        os.makedirs(args.output_dir,exist_ok=True)
-        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        folder_name = '_'.join([now,'dataset',args.dataset,'numcls',str(args.cls_num),'testrate',str(args.test_rate).replace('.','')])
+
+        folder_path = os.path.join(args.output_dir,folder_name)
+        os.makedirs(folder_path,exist_ok=True)
 
         datapath = dataset_path(args.dataroot_dir,args.dataset)
         dom_dataset_list, domain_list = datapath_to_domaindatasetlist(datapath)
 
         train_df, test_df = mk_imbalance_newdatacsv(dom_dataset_list,domain_list,args.test_rate, args.cls_num)
-        train_df.to_csv(os.path.join(args.output_dir, now + '_train_' + args.dataset + '_numclass_'+str(args.cls_num)+'_testrate_'+str(args.test_rate).replace('.','')+'.csv'), index=False)
-        test_df.to_csv(os.path.join(args.output_dir, now + '_test_' + args.dataset + '_numclass_'+str(args.cls_num)+'_testrate_'+str(args.test_rate).replace('.','')+'.csv'), index=False)
+        train_df.to_csv(os.path.join(folder_path, 'train.csv'), index=False)
+        test_df.to_csv(os.path.join(folder_path, 'test.csv'), index=False)
 
 
     elif args.command == 'anotherimb': # make imbalance data from train csv
+        folder_name = os.path.dirname(args.train_csv)
+        folder_path = os.path.join(args.output_dir,folder_name)
         train_df = pd.read_csv(args.train_csv)
         imb_df = csv_to_imbalance_csv(train_df, args.imb_type, args.imb_rate, args.minor_domain, args.target_doms)
 
-        now = '_'.join(os.path.basename(args.train_csv).split('_')[:2])
-        targets_name=''.join([str(x) for x in args.target_doms])
-        imb_df.to_csv(os.path.join(args.output_dir, now + '_imbalance_' + args.dataset + '_targets_'+targets_name+'_minor_'+str(args.minor_domain)+'.csv'), index=False)
+        targets=''.join([str(x) for x in args.target_doms])
+        imb_df.to_csv(os.path.join(folder_path, 'imb_targets_'+targets+'_minor_'+str(args.minor_domain) +'_imbrate_'+str(args.imb_rate)+'_clsordom_'+args.imb_type + '.csv'), index=False)
