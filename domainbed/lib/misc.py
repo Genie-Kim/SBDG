@@ -122,14 +122,66 @@ def accuracy(network, loader, weights, device):
                 batch_weights = weights[weights_offset : weights_offset + len(x)]
                 weights_offset += len(x)
             batch_weights = batch_weights.cuda()
-            if p.size(1) == 1:
+            if p.size(1) == 1: # for binary class setting
+                # p.gt(0)은 prediction score가 0보다 큰 것을 true, 아니면 false로 나타냄.
                 correct += (p.gt(0).eq(y).float() * batch_weights).sum().item()
-            else:
+            else: # for multi class setting
                 correct += (p.argmax(1).eq(y).float() * batch_weights).sum().item()
             total += batch_weights.sum().item()
     network.train()
 
     return correct / total
+
+
+def accuracy_percls(network, loader, weights, device,num_cls):
+    correct_percls = np.zeros(num_cls).tolist()
+    total_percls = np.zeros(num_cls).tolist()
+    correct = 0
+    total = 0
+    weights_offset = 0
+
+    network.eval()
+    with torch.no_grad():
+        for x, y in loader:
+            x = x.to(device)
+            y = y.to(device)
+            p = network.predict(x)
+            if weights is None:
+                batch_weights = torch.ones(len(x))
+            else:
+                batch_weights = weights[weights_offset : weights_offset + len(x)]
+                weights_offset += len(x)
+            batch_weights = batch_weights.cuda()
+            if p.size(1) == 1:
+                # p.gt(0)은 prediction score가 0보다 큰 것을 true, 아니면 false로 나타냄.
+                correct += (p.gt(0).eq(y).float() * batch_weights).sum().item()
+            else:
+                correct_temp,total_temp = multi_acc(p,y,num_cls)
+                correct_percls = [correct_percls[x] + correct_temp[x] for x in range(num_cls)]
+                total_percls = [total_percls[x] + total_temp[x] for x in range(num_cls)]
+                correct += (p.argmax(1).eq(y).float() * batch_weights).sum().item()
+            total += batch_weights.sum().item()
+    acc_percls = [correct_percls[x] / total_percls[x] for x in range(num_cls)]
+    total_acc = correct / total
+    acc_percls.append(total_acc) # last element of acc_percls is total accuracy considering the weight.
+    network.train()
+
+    return acc_percls # [class1 accuacy,class2 accuacy,class3 accuacy,,, total accuracy]
+
+def multi_acc(pred, label,num_cls):
+    num_of_corrected_percls = []
+    num_of_total_percls = []
+    tags = torch.argmax(pred, dim=1)
+    for c in range(num_cls):
+        of_c = label == c
+        num_total_per_label = of_c.sum() # batch 안에 class =c 인 개수.
+        of_c &= tags == label # of_c가 그중에서 몇개 맞췄냐로 바뀐다.
+        num_corrects_per_label = of_c.sum()
+        num_of_corrected_percls.append(num_corrects_per_label.item())
+        num_of_total_percls.append(num_total_per_label.item())
+    return (num_of_corrected_percls,num_of_total_percls)
+
+
 
 class Tee:
     def __init__(self, fname, mode="a"):

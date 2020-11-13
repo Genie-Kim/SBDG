@@ -14,19 +14,25 @@ def _hparams(algorithm, dataset, random_state):
     hparams = {}
     
     hparams['data_augmentation'] = (True, True)
-    hparams['resnet18'] = (False, False)
+    hparams['resnet18'] = (True, True)
     hparams['resnet_dropout'] = (0., random_state.choice([0., 0.1, 0.5]))
     hparams['class_balanced'] = (False, False)
 
     if dataset in IMBALANCE: # for imbalance dataset(no random version support)
+
         hparams['dataset_version'] = ('20201107180355','20201107180355')
-        hparams['numcls'] = (3,3)
+        hparams['numcls'] = (5,5)
         hparams['testrate'] = (0.2,0.2)
+        hparams['valrate'] = (0.1,0.1)
+        hparams['targets_fix'] = ([2],[2])
+        hparams['imb_data_root'] = (
+        '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output', '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output')  # 프로젝트 맨 상위 폴더에서 python -m으로 돌릴때..
 
         hparams['clsordom'] = ('domain','domain')  # make domain imbalance
         hparams['imbrate'] = (10,10)  # The degree of imbalance, expressed as a major/minor value.
-        hparams['minor'] = (5,5)
-        hparams['imb_output_path']=('./domainbed/imbalance_result_output','domainbed/imbalance_result_output') # 프로젝트 맨 상위 폴더에서 python -m으로 돌릴때..
+        hparams['minor_domain'] = (5,5)
+
+
 
     if dataset not in SMALL_IMAGES:
         hparams['lr'] = (5e-5, 10**random_state.uniform(-5, -3.5))
