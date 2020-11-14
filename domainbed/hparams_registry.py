@@ -24,7 +24,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['numcls'] = (5,5)
         hparams['testrate'] = (0.2,0.2)
         hparams['valrate'] = (0.1,0.1)
-        hparams['targets_fix'] = ([2],[2])
+        hparams['targets_fix'] = ([],[])
         hparams['imb_data_root'] = (
         '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output', '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output')  # 프로젝트 맨 상위 폴더에서 python -m으로 돌릴때..
 
