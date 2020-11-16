@@ -324,21 +324,42 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # debugging 할때는 hparam registry에서 버전숫자 바꾸기, imbrate 극과 극으로만 바꾸기, imbalance_dataset에서 niter 바꾸기.
-    imbrates = [1, 16]  # debug
+    # imbrates = [1, 16]  # debug
     # imbtrain(args, [1, 5], 1, 2, 'domain')  # debug
 
     clsordom = 'domain'
-    # imbrates = [1,2,4,8,16]
+    imbrates = [1,2,4,8,16]
     # check hparams_registry and delete the fixed target domain number.
-    # domains = [0,1,2,3,4,5]
+    # domains = [0,1,2,3,4,5] # 여기서 fixed target domain은 뺀다.
     domains = [1,2,3,4,5]
 
-
-    for running_target_tuple in list(combinations(domains,args.num_running_targets)):
+    for running_target_tuple in list(combinations(domains, args.num_running_targets)):
         running_targets = [x for x in running_target_tuple]
+        balance_setting_check = False  # balance setting을 했는가.
         for minor_domain in domains:
             if not minor_domain in running_targets:
                 for imbrate in imbrates:
-                        print (imbrate,minor_domain, running_targets,domains)
+                    if imbrate == 1 & (not balance_setting_check):
+                        balance_setting_check = True
+                    elif imbrate == 1 & balance_setting_check:
+                        continue
+                    print('imbrate, minor_domain, running_targets', imbrate, minor_domain, running_targets)
+
+    yorn = input('\n swing by this settings?(y or n)-->')
+
+    if yorn=='y':
+        for running_target_tuple in list(combinations(domains,args.num_running_targets)):
+            running_targets = [x for x in running_target_tuple]
+            balance_setting_check = False # balance setting을 했는가.
+            for minor_domain in domains:
+                if not minor_domain in running_targets:
+                    for imbrate in imbrates:
+                        if imbrate ==1 & (not balance_setting_check):
+                            balance_setting_check = True
+                        elif imbrate ==1 & balance_setting_check:
+                            continue
+                        print ('\nimbrate : ',imbrate)
+                        print('minor_domain : ',minor_domain)
+                        print('running_targets : ', running_targets)
                         imbtrain(args, running_targets, imbrate, minor_domain, clsordom)
 

@@ -21,8 +21,8 @@ DATASETS = [
 
 class ImbalanceDomainNet(DomainNet):
     CHECKPOINT_FREQ = 10
-    N_STEPS = 1 # debug
-    # N_STEPS = 500
+    # N_STEPS = 1 # debug
+    N_STEPS = 500
     ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
     ORIGINDATA = 'DomainNet'
 
