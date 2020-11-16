@@ -163,12 +163,16 @@ if __name__ == "__main__":
 
     eval_weights = [None for _, weights in (in_splits + out_splits)]
 
-    temp = list.copy(train_dataset.ENVIRONMENTS)
+    domain_list = list.copy(train_dataset.ORIGINDATA)
     target_domains = []
-    for x in hparams['targets_fix']+args.running_targets:
-        target_domains.append(temp.pop(x))
+    source_domains = []
+    for x in range(len(domain_list)):
+        if x in hparams['targets_fix'] + args.running_targets:
+            target_domains.append(domain_list[x])
+        else:
+            source_domains.append(domain_list[x])
 
-    source_domains = temp
+
     eval_loader_names = ['env_'+dom_name + '_in'
         for dom_name in source_domains]
     eval_loader_names += ['env_'+dom_name+'_out'

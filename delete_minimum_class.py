@@ -11,6 +11,10 @@ while(1):
     minncls = int(input('\n\ntype minimum # of remain classes you want(int) ==>'))
     dropped_class = []
     newdf = df
+    print(newdf.head(4))
+    drop_domains = input('\n\ntype domain want to drop(ex : x_x_x)').split('_')
+    if drop_domains != ['']:
+        newdf = newdf.drop(drop_domains,axis=1)
     while(len(newdf)>minncls):
         newdf.min().idxmin()
         minimum_class = newdf.loc[:, newdf.min().idxmin()].idxmin()
@@ -25,6 +29,8 @@ while(1):
     print('minimum # of images = ' ,minimum)
     D = len(newdf.columns)
     print('# of images of balance dataset = ',minimum*(D-1.9)/(D-1))
+    import pdb; pdb.set_trace()
+
 
 
 

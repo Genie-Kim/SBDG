@@ -21,7 +21,8 @@ DATASETS = [
 
 class ImbalanceDomainNet(DomainNet):
     CHECKPOINT_FREQ = 10
-    N_STEPS = 500
+    N_STEPS = 1 # debug
+    # N_STEPS = 500
     ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
     ORIGINDATA = 'DomainNet'
 
@@ -48,16 +49,12 @@ class ImbalanceDomainNet(DomainNet):
             make_imbtrain_csv_bysetting(params,running_targets,hparams['minor_domain'],hparams['imbrate'],hparams['clsordom'])
 
         # read the imb & val csv.
-        imb_df = pd.read_csv(self.imbtrain_csv_path)
-        val_df = pd.read_csv(self.val_csv_path)
+        if trainorval == 'train':
+            temp_df = pd.read_csv(self.imbtrain_csv_path)
+        elif trainorval == 'val':
+            temp_df = pd.read_csv(self.val_csv_path)
 
         # changing mother's self.datasets instances.
-
-        if trainorval == 'train':
-            temp_df = imb_df
-        elif trainorval == 'val':
-            temp_df = val_df
-
         for idx, domain in enumerate(self.ENVIRONMENTS):
             dom_df = temp_df[temp_df['dom'] == domain]
             self.datasets[idx].classes = dom_df.groupby('cls').count().index.to_list()
@@ -65,4 +62,16 @@ class ImbalanceDomainNet(DomainNet):
             self.datasets[idx].imgs = [(p, self.datasets[idx].class_to_idx[c]) for d, c, p in dom_df.values.tolist()]
             self.datasets[idx].samples = list.copy(self.datasets[idx].imgs)
             self.datasets[idx].targets = [c_id for p, c_id in self.datasets[idx].imgs]
+
+        # target domain을 self.dataset에서 없애기.
+        tempdatasetlist = []
+        tempdomnamelist =[]
+        for idx, domain in enumerate(self.datasets):
+            if len(domain)>0:
+                tempdatasetlist.append(domain)
+                tempdomnamelist.append(self.ENVIRONMENTS[idx])
+        self.datasets = tempdatasetlist
+        self.ENVIRONMENTS = tempdomnamelist
         self.num_classes = len(self.datasets[-1].classes)
+
+        del temp_df,dom_df

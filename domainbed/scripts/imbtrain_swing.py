@@ -131,19 +131,22 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
         batch_size=64,
         num_workers=val_dataset.N_WORKERS)
         for env, _ in in_splits + out_splits]  # 한 도메인의 support set과 query set을 다 eval loader로 넣음
+    # TODO : 만약 source domain의 크기가 크다면 eval loader의 경우 out split만 해야한다. validation set만 따져야 한다.
 
     eval_weights = [None for _, weights in (in_splits + out_splits)]
 
-    temp = list.copy(train_dataset.ENVIRONMENTS)
+    # imbalance dataset의 원 environment를 참조.
+    domain_list = list.copy(vars(imbalance_dataset)[args.dataset].ENVIRONMENTS)
     target_domains = []
-    for x in hparams['targets_fix'] + running_targets:
-        target_domains.append(temp.pop(x))
+    source_domains = train_dataset.ENVIRONMENTS
+    for dom_name in domain_list:
+        if dom_name not in source_domains:
+            target_domains.append(dom_name)
 
-    source_domains = temp
     eval_loader_names = ['env_' + dom_name + '_in'
                          for dom_name in source_domains]
     eval_loader_names += ['env_' + dom_name + '_out'
-                          for dom_name in train_dataset.ENVIRONMENTS]
+                          for dom_name in domain_list] # TODO : 만약 source domain의 크기가 크다면 eval loader의 경우 out split만 해야한다. validation set만 따져야 한다.
 
     algorithm_class = algorithms.get_algorithm_class(args.algorithm)
     algorithm = algorithm_class(train_dataset.input_shape, train_dataset.num_classes,
@@ -169,7 +172,7 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
 
     writer.add_text('domain summary', 'Target domains : ' + ', '.join(target_domains), 0)
     writer.add_text('domain summary', 'Source domains : ' + ', '.join(source_domains), 1)
-    writer.add_text('domain summary', 'minor domain : ' + train_dataset.ENVIRONMENTS[hparams['minor_domain']], 2)
+    writer.add_text('domain summary', 'minor domain : ' + domain_list[hparams['minor_domain']], 2)
 
     best_mean_acc = 0  # source domain's validation's accuracy's best mean.
     for step in tqdm(range(start_step, n_steps)):  # iteration, epoch개념이 따로 없고 데이터셋 숫자로 계산하는 개념이 됨.
@@ -316,21 +319,26 @@ if __name__ == "__main__":
     parser.add_argument('--checkpoint_freq', type=int, default=None,
                         help='Checkpoint every N steps. Default is dataset-dependent.')
     parser.add_argument('--skip_model_save', action='store_true')
-    parser.add_argument('--num_targets', type=int, default=None,
+    parser.add_argument('--num_running_targets', type=int, default=None,
                         help='how many the target domain selected.')
 
     args = parser.parse_args()
+    # debugging 할때는 hparam registry에서 버전숫자 바꾸기, imbrate 극과 극으로만 바꾸기, imbalance_dataset에서 niter 바꾸기.
+    imbrates = [1, 16]  # debug
+    # imbtrain(args, [1, 5], 1, 2, 'domain')  # debug
 
-
-    imbrates = [1,2,4,8,16]
     clsordom = 'domain'
-    domains = [0,1,2,3,4,5]
+    # imbrates = [1,2,4,8,16]
+    # check hparams_registry and delete the fixed target domain number.
+    # domains = [0,1,2,3,4,5]
+    domains = [1,2,3,4,5]
 
-    for running_target_tuple in list(combinations(domains,args.num_targets)):
+
+    for running_target_tuple in list(combinations(domains,args.num_running_targets)):
         running_targets = [x for x in running_target_tuple]
         for minor_domain in domains:
             if not minor_domain in running_targets:
                 for imbrate in imbrates:
                         print (imbrate,minor_domain, running_targets,domains)
-                        # imbtrain(args, running_targets, imbrate, minor_domain, clsordom)
+                        imbtrain(args, running_targets, imbrate, minor_domain, clsordom)
 
