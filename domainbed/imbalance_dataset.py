@@ -25,7 +25,6 @@ class ImbalanceDomainNet(DomainNet):
     N_STEPS = 500
     ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
     ORIGINDATA = 'DomainNet'
-    N_WORKERS = 6
 
     def __init__(self, root, trainorval,running_targets, hparams):
         # root is default dg dataset path.

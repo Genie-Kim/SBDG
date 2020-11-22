@@ -30,7 +30,7 @@ class InfiniteDataLoader:
         batch_sampler = torch.utils.data.BatchSampler(
             sampler,
             batch_size=batch_size,
-            drop_last=True)
+            drop_last=True) # 이부분이 문제임. sampler의 length보다 batch가 큰경우..
 
         self._infinite_iterator = iter(torch.utils.data.DataLoader(
             dataset,
