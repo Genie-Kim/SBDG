@@ -26,7 +26,7 @@ class ImbalanceDomainNet(DomainNet):
     ENVIRONMENTS = ["clipart", "infograph", "painting", "quickdraw", "real", "sketch"]
     ORIGINDATA = 'DomainNet'
 
-    def __init__(self, root, trainorval,running_targets, hparams):
+    def __init__(self, root, trteval,running_targets, hparams):
         # root is default dg dataset path.
         # target_domains is target domains list by number of sorted domain list
         super().__init__(root, running_targets + hparams['targets_fix'], hparams)
@@ -39,6 +39,7 @@ class ImbalanceDomainNet(DomainNet):
 
         self.imbtrain_csv_path = get_imb_csvpath_bysetting(params, running_targets, 'imbtrain', minor=hparams['minor_domain'],imbrate=hparams['imbrate'],clsordom=hparams['clsordom'])
         self.val_csv_path = get_imb_csvpath_bysetting(params, running_targets, 'val', minor=hparams['minor_domain'],imbrate=hparams['imbrate'],clsordom=hparams['clsordom'])
+        self.test_csv_path = get_imb_csvpath_bysetting(params, running_targets, 'test', minor=hparams['minor_domain'],imbrate=hparams['imbrate'],clsordom=hparams['clsordom'])
 
         if not os.path.isfile(self.val_csv_path):  # if val csv does not exist for this setting.
             print(self.val_csv_path, ' does not exist, so make the val.csv, val.csv file')
@@ -49,10 +50,12 @@ class ImbalanceDomainNet(DomainNet):
             make_imbtrain_csv_bysetting(params,running_targets,hparams['minor_domain'],hparams['imbrate'],hparams['clsordom'])
 
         # read the imb & val csv.
-        if trainorval == 'train':
+        if trteval == 'train':
             temp_df = pd.read_csv(self.imbtrain_csv_path)
-        elif trainorval == 'val':
+        elif trteval == 'val':
             temp_df = pd.read_csv(self.val_csv_path)
+        elif trteval == 'test':
+            temp_df = pd.read_csv(self.test_csv_path)
 
         # changing mother's self.datasets instances.
         for idx, domain in enumerate(self.ENVIRONMENTS):

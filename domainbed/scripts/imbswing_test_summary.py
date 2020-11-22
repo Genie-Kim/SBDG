@@ -48,8 +48,8 @@ if __name__ == "__main__":
     parser.add_argument('--checkpoint_freq', type=int, default=None,
                         help='Checkpoint every N steps. Default is dataset-dependent.')
     parser.add_argument('--skip_model_save', action='store_true')
-    parser.add_argument('--num_combination', type=int, nargs='+', default=[1],
-                        help='the list of num that how many the target domain selected.')
+    parser.add_argument('--num_combination', type=int, nargs='+', default=[1],help='the list of num that how many the target domain selected.')
+
 
     args = parser.parse_args()
     # debugging 할때는 hparam registry에서 버전숫자 바꾸기, imbrate 극과 극으로만 바꾸기, imbalance_dataset에서 niter 바꾸기.
@@ -66,9 +66,10 @@ if __name__ == "__main__":
     idx2domain = list.copy(vars(imbalance_dataset)[args.dataset].ENVIRONMENTS)
     domain2idx = {k:v for v,k in enumerate(idx2domain)}
     columns = ['alg', 'source', 'fixtarget', 'runtarget', 'minor', 'imbrate', 'dom', 'trteval', 'cls', 'acc']
-    acc_result_df = pd.DataFrame(columns=columns)
+    acc_result_df = pd.DataFrame(
+        columns=columns)
     for num_runtargets in args.num_combination:
-        for running_target_tuple in tqdm(list(combinations(domains, num_runtargets))):
+        for running_target_tuple in tqdm(list(combinations(domains,num_runtargets))):
             running_targets = [x for x in running_target_tuple]
             balance_setting_check = False  # balance setting을 했는가.
             for minor_domain in domains:
@@ -118,70 +119,90 @@ if __name__ == "__main__":
                                                                 hparams['minor_domain'],
                                                                 hparams['imbrate'], hparams['clsordom'])
                         imb_path = os.path.splitext(imb_csvpath)[0]
+                        # load best source mean validation model.
+                        best_model_dict = torch.load(os.path.join(imb_path, 'best_val_model.pkl'))
+                        algorithm_class = algorithms.get_algorithm_class(args.algorithm)
+                        algorithm = algorithm_class(best_model_dict['model_input_shape'],
+                                                    best_model_dict['model_num_classes'],
+                                                    best_model_dict['model_num_domains'], hparams)
+                        algorithm.load_state_dict(best_model_dict['model_dict'])
+                        algorithm.to(device)
 
-                        # load validation result json & get best validation model's result
-                        with open(os.path.join(imb_path, 'results.jsonl'),'r') as json_file:
-                            jsonl_str = json_file.read()
-                            val_result = [json.loads(jline) for jline in jsonl_str.splitlines()]
-                            val_acc_list = []
-                            for item in val_result:
-                                val_acc = 0
-                                for dom_name in source_domains:
-                                    val_acc += item['_'.join(['env',dom_name,'out','acc'])]
-                                val_acc_list.append(val_acc/len(source_domains))
-                            best_val_idx = val_acc_list.index(max(val_acc_list))
-                            best_val_result = val_result[best_val_idx]
+                        test_dataset = vars(imbalance_dataset)[args.dataset](args.data_dir, 'test', running_targets, hparams)
+                        # for making validation set
+                        out_splits = []  # validation dataset instances of each domains spliting by args.holdout_fraction
+                        for env_test_i, env_test in enumerate(test_dataset):
+                            if hparams['class_balanced']:
+                                out_weights = misc.make_weights_for_balanced_classes(env_test)
+                            else:
+                                in_weights, out_weights = None, None
+                            out_splits.append((env_test, out_weights))
 
+                        # eval_loaders는 domain 이 6개면 12개의 dataset loader가 들어간다. target domain 안빠짐.
+                        eval_loaders = [FastDataLoader(
+                            dataset=env,
+                            batch_size=64,
+                            num_workers=test_dataset.N_WORKERS)
+                            for env, _ in out_splits]  # 한 도메인의 support set과 query set을 다 eval loader로 넣음
+                        eval_weights = [None for _, weights in out_splits]
+                        eval_loader_names = ['env_' + dom_name + '_out'
+                                              for dom_name in idx2domain]
 
+                        eval_acc_df = pd.DataFrame(columns=['dom', 'trteval', 'cls', 'acc'])
+                        evals = zip(eval_loader_names, eval_loaders, eval_weights)
+                        for name, loader, weights in evals:
+                            # acc = misc.accuracy(algorithm, loader, weights, device)
+                            acc = misc.accuracy_percls(algorithm, loader, weights, device, hparams['numcls'])
+
+                            dom = name.split('_')[1]
+                            total_acc = acc.pop(-1)
+
+                            temp_df = pd.DataFrame([[dom, 'test', '@total', total_acc]],
+                                                   columns=['dom', 'trteval', 'cls', 'acc'])
+                            eval_acc_df = pd.concat([eval_acc_df, temp_df], ignore_index=True)
+
+                            for cls, idx in loader._infinite_iterator._dataset.class_to_idx.items():
+                                temp_df = pd.DataFrame([[dom, 'test', cls, acc[idx]]],
+                                                       columns=['dom', 'trteval', 'cls', 'acc'])
+                                eval_acc_df = pd.concat([eval_acc_df, temp_df], ignore_index=True)
+
+                        test_pivot_df = pd.read_csv(test_dataset.test_csv_path).pivot_table(index='cls', columns='dom', aggfunc='count')
+                        imgnum_testsets = {k[1]: v for k, v in test_pivot_df.sum(axis=0).to_dict().items()}
+
+                        weit_target_te_acc = 0
+                        weit_source_te_acc = 0
+
+                        imgnum_source = 0
+                        imgnum_target = 0
+                        for dom in idx2domain:
+                            if dom in source_domains:
+                                imgnum_source += imgnum_testsets[dom]
+                            elif dom in target_domains:
+                                imgnum_target += imgnum_testsets[dom]
+
+                        for dom in idx2domain:
+                            if dom in source_domains:
+                                ratio = imgnum_testsets[dom]/imgnum_source
+                                weit_source_te_acc += ratio * float(eval_acc_df[(eval_acc_df['dom'] == dom) & (eval_acc_df['cls'] == '@total')]['acc'])
+                            elif dom in target_domains:
+                                ratio = imgnum_testsets[dom] / imgnum_target
+                                weit_target_te_acc += ratio * float(eval_acc_df[(eval_acc_df['dom'] == dom) & (eval_acc_df['cls'] == '@total')]['acc'])
+
+                        temp_df = pd.DataFrame([['@source', 'test', '@mean', weit_source_te_acc],['@target', 'test', '@mean', weit_target_te_acc]],
+                                               columns=['dom', 'trteval', 'cls', 'acc'])
+                        eval_acc_df = pd.concat([eval_acc_df, temp_df], ignore_index=True)
+
+                        # merge eval_acc_df to acc_result_df
                         same_list = ['MLDG', '_'.join(source_domains), '_'.join(fixtargets),'_'.join(runtargets),
                                                          idx2domain[hparams['minor_domain']], hparams['imbrate']]
-                        weit_source_tr_acc = 0
-                        mean_source_val_acc = 0
-                        mean_target_val_acc = 0
-
-
-                        for k,v in best_val_result.items():
-                            keylist = k.split('_')
-
-                            if keylist[0] == 'env':
-                                if keylist[2] == 'out':
-                                    tetrval = 'val'
-                                    if keylist[-1] == 'acc': # validation accuracy
-                                        cls = '@total'
-                                        if keylist[1] in target_domains:
-                                            mean_target_val_acc += v
-                                        else:
-                                            mean_source_val_acc += v
-                                    else:
-                                        cls = keylist[4]
-
-                                elif keylist[2] == 'in':
-                                    tetrval = 'train'
-                                    if keylist[-1] == 'acc': # train accuracy
-                                        cls = '@total'
-                                        if keylist[1] == minor_name:
-                                            # weighting for imbrate of minor domain
-                                            weit_source_tr_acc += v/(hparams['imbrate']*(len(source_domains)-1)+1)
-                                        else:
-                                            weit_source_tr_acc += v*hparams['imbrate'] / (
-                                                        hparams['imbrate'] * (len(source_domains) - 1) + 1)
-                                    else:
-                                        cls = keylist[4]
-
-                                temp_df = pd.DataFrame([same_list+[keylist[1], tetrval, cls, v]],
-                                                       columns=columns)
-
-                                acc_result_df = pd.concat([acc_result_df, temp_df], ignore_index=True)
-
-                        mean_source_val_acc = mean_source_val_acc/len(source_domains)
-                        mean_target_val_acc = mean_target_val_acc/len(target_domains)
-
-                        temp_df = pd.DataFrame([same_list + ['@source', 'train', '@mean', weit_source_tr_acc],
-                                                same_list + ['@source', 'val', '@mean', mean_source_val_acc],
-                                                same_list + ['@target', 'val', '@mean', mean_target_val_acc]],
-                                               columns=columns)
+                        temp = [same_list for i in range(len(eval_acc_df))]
+                        temp_df = pd.DataFrame(temp, columns=columns[:6])
+                        temp_df = pd.concat([temp_df, eval_acc_df], axis=1)
                         acc_result_df = pd.concat([acc_result_df, temp_df], ignore_index=True)
+
     out_folder_name = get_imb_foldername_bysetting(hparams['dataset_version'], ORIGINDATA, hparams['numcls'], hparams['testrate'],
                                  hparams['valrate'], hparams['targets_fix'])
-    acc_result_df.to_csv(os.path.join(hparams['imb_data_root'],out_folder_name,'train_val_result_summary.csv'),index=False)
+    acc_result_df.to_csv(os.path.join(hparams['imb_data_root'],out_folder_name,'test_result_summary.csv'),index=False)
+
+
 
