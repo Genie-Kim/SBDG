@@ -123,8 +123,7 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
         dataset=env,
         weights=env_weights,
         batch_size=hparams['batch_size'],
-        num_workers=train_dataset.N_WORKERS,
-        imbalance = True)
+        num_workers=train_dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(in_splits)]
 
 
@@ -165,7 +164,7 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
     checkpoint_vals = collections.defaultdict(lambda: [])  # time과 같은 부수적인 결과물 dict로 저장.
 
     steps_per_epoch = min([len(env) / hparams['batch_size'] for env, _ in
-                           in_splits])  # domain중에서 가장 작은 도메인 / batch size를 epoch의 iteration 개수로 잡음.
+                           in_splits])  # domain중에서 가장 작은 도메인 / batch size의 올림을 epoch의 itration 개수로 잡음.
 
     n_steps = args.steps or train_dataset.N_STEPS
     checkpoint_freq = args.checkpoint_freq or train_dataset.CHECKPOINT_FREQ
@@ -181,7 +180,8 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
     best_mean_acc = 0  # source domain's validation's accuracy's best mean.
     for step in tqdm(range(start_step, n_steps)):  # iteration, epoch개념이 따로 없고 데이터셋 숫자로 계산하는 개념이 됨.
         step_start_time = time.time()
-        # 각 source도메인 마다 (이미지 x batch 개수,라벨 x batch개수) 튜플을 생성하여 source 도메인 개수만큼 만들고 그걸 리스트로 만든다. 배치 개수는 hparams_registry.py 19째 줄에 기록됨.
+        # 각 source도메인 마다 (이미지 x batch_size,라벨 x batch_size) 튜플을 생성하여 source 도메인 개수만큼 만들고 그걸 리스트로 만든다.
+        # 배치 개수는 hparams_registry.py 19째 줄에 기록됨.
         minibatches_device = [(x.to(device), y.to(device))
                               for x, y in next(train_minibatches_iterator)]
         step_vals = algorithm.update(
@@ -335,7 +335,7 @@ if __name__ == "__main__":
 
     clsordom = 'domain'
     # imbrates = [32,64]
-    imbrates = [32]
+    imbrates = [16]
     # check hparams_registry and delete the fixed target domain number.
     # domains = [0,1,2,3,4,5] # 여기서 fixed target domain은 뺀다.
     domains = [1,2,3,4,5]
