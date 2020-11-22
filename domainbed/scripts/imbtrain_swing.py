@@ -301,6 +301,8 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
 
 
 if __name__ == "__main__":
+    # when starting
+    # python -m domainbed.scripts.imbtrain_swing --data_dir=/home/genie/2hddb/dg_dataset --algorithm MLDG --dataset ImbalanceDomainNet --num_running_targets 2
     parser = argparse.ArgumentParser(description='Domain generalization')
     parser.add_argument('--data_dir', type=str)
     parser.add_argument('--dataset', type=str, default="RotatedMNIST")
@@ -345,7 +347,8 @@ if __name__ == "__main__":
                         continue
                     print('imbrate, minor_domain, running_targets', imbrate, minor_domain, running_targets)
 
-    yorn = input('\n swing by this settings?(y or n)-->')
+#    yorn = input('\n swing by this settings?(y or n)-->')
+    yorn = 'y'
 
     if yorn=='y':
         for running_target_tuple in list(combinations(domains,args.num_running_targets)):
