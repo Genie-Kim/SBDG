@@ -116,13 +116,17 @@ def imbtrain(args, running_targets, imbrate, minor_domain, clsordom):
             else:
                 in_weights, out_weights = None, None
             in_splits.append((env, in_weights))
-
+    # when imbalance ==True then use random over sampling for minor domain.
+    # math.ceil(len(dataset)/batch_size) * batch_size 만큼 dataset에서 sampling한다.
+    # domain generalization이기 때문에 random oversampling 사용.
     train_loaders = [InfiniteDataLoader(
         dataset=env,
         weights=env_weights,
         batch_size=hparams['batch_size'],
-        num_workers=train_dataset.N_WORKERS)
+        num_workers=train_dataset.N_WORKERS,
+        imbalance = True)
         for i, (env, env_weights) in enumerate(in_splits)]
+
 
     # fast loader는 좀더 빨라졌다 뿐, infinite data loader와 비슷하다.
     # eval_loaders는 domain 이 6개면 12개의 dataset loader가 들어간다. target domain 안빠짐.
@@ -330,7 +334,8 @@ if __name__ == "__main__":
     # imbtrain(args, [1, 5], 1, 2, 'domain')  # debug
 
     clsordom = 'domain'
-    imbrates = [32,64]
+    # imbrates = [32,64]
+    imbrates = [32]
     # check hparams_registry and delete the fixed target domain number.
     # domains = [0,1,2,3,4,5] # 여기서 fixed target domain은 뺀다.
     domains = [1,2,3,4,5]
