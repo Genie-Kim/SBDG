@@ -193,7 +193,7 @@ if __name__ == "__main__":
                         eval_acc_df = pd.concat([eval_acc_df, temp_df], ignore_index=True)
 
                         # merge eval_acc_df to acc_result_df
-                        same_list = ['MLDG', '_'.join(source_domains), '_'.join(fixtargets),'_'.join(runtargets),
+                        same_list = [hparams['dataset_version'], '_'.join(source_domains), '_'.join(fixtargets),'_'.join(runtargets),
                                                          idx2domain[hparams['minor_domain']], hparams['imbrate']]
                         temp = [same_list for i in range(len(eval_acc_df))]
                         temp_df = pd.DataFrame(temp, columns=columns[:6])

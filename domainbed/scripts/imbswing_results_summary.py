@@ -133,7 +133,7 @@ if __name__ == "__main__":
                             best_val_result = val_result[best_val_idx]
 
 
-                        same_list = ['MLDG', '_'.join(source_domains), '_'.join(fixtargets),'_'.join(runtargets),
+                        same_list = [hparams['dataset_version'], '_'.join(source_domains), '_'.join(fixtargets),'_'.join(runtargets),
                                                          idx2domain[hparams['minor_domain']], hparams['imbrate']]
                         weit_source_tr_acc = 0
                         mean_source_val_acc = 0
