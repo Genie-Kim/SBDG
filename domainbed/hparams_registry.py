@@ -13,6 +13,7 @@ def _hparams(algorithm, dataset, random_seed):
     New algorithms / networks / etc. should add entries here.
     """
     SMALL_IMAGES = ['Debug28', 'RotatedMNIST', 'ColoredMNIST']
+    IMBALANCE = ["ImbalanceDomainNet"]
 
     hparams = {}
     def _hparam(name, default_val, random_val_fn):
@@ -23,12 +24,7 @@ def _hparams(algorithm, dataset, random_seed):
             misc.seed_hash(random_seed, name)
         )
         hparams[name] = (default_val, random_val_fn(random_state))
-
-    hparams['data_augmentation'] = (True, True)
-    hparams['resnet18'] = (True, True)
-    hparams['resnet_dropout'] = (0., random_state.choice([0., 0.1, 0.5]))
-    hparams['class_balanced'] = (False, False)
-
+    # ToDo 수정해야함.
     if dataset in IMBALANCE: # for imbalance dataset(no random version support)
         hparams['dataset_version'] = ('MLDG','MLDG')
         hparams['numcls'] = (5,5)
@@ -41,21 +37,7 @@ def _hparams(algorithm, dataset, random_seed):
         hparams['clsordom'] = ('domain','domain')  # make domain imbalance
         hparams['imbrate'] = (10,10)  # The degree of imbalance, expressed as a major/minor value.
         hparams['minor_domain'] = (5,5)
-
-
-
-    if dataset not in SMALL_IMAGES:
-        hparams['lr'] = (5e-5, 10**random_state.uniform(-5, -3.5))
-        if dataset == 'DomainNet':
-            hparams['batch_size'] = (32, int(2**random_state.uniform(3, 5)))
-        else:
-            hparams['batch_size'] = (32, int(2**random_state.uniform(3, 5.5)))
-        if algorithm == "ARM":
-            hparams['batch_size'] = (8, 8)
-    else:
-        hparams['lr'] = (1e-3, 10**random_state.uniform(-4.5, -2.5))
-        hparams['batch_size'] = (64, int(2**random_state.uniform(3, 9)))
-
+    ##################################################
     _hparam('data_augmentation', True, lambda r: True)
     _hparam('resnet18', False, lambda r: False)
     _hparam('resnet_dropout', 0., lambda r: r.choice([0., 0.1, 0.5]))

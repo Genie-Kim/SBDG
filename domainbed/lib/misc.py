@@ -121,10 +121,10 @@ def accuracy(network, loader, weights, device):
             else:
                 batch_weights = weights[weights_offset : weights_offset + len(x)]
                 weights_offset += len(x)
-            batch_weights = batch_weights.cuda()
+            batch_weights = batch_weights.to(device)
             if p.size(1) == 1: # for binary class setting
                 # p.gt(0)은 prediction score가 0보다 큰 것을 true, 아니면 false로 나타냄.
-                correct += (p.gt(0).eq(y).float() * batch_weights).sum().item()
+                correct += (p.gt(0).eq(y).float() * batch_weights.view(-1, 1)).sum().item()
             else: # for multi class setting
                 correct += (p.argmax(1).eq(y).float() * batch_weights).sum().item()
             total += batch_weights.sum().item()
@@ -151,10 +151,10 @@ def accuracy_percls(network, loader, weights, device,num_cls):
             else:
                 batch_weights = weights[weights_offset : weights_offset + len(x)]
                 weights_offset += len(x)
-            batch_weights = batch_weights.cuda()
+            batch_weights = batch_weights.to(device)
             if p.size(1) == 1:
                 # p.gt(0)은 prediction score가 0보다 큰 것을 true, 아니면 false로 나타냄.
-                correct += (p.gt(0).eq(y).float() * batch_weights).sum().item()
+                correct += (p.gt(0).eq(y).float() * batch_weights.view(-1, 1)).sum().item()
             else:
                 correct_temp,total_temp = multi_acc(p,y,num_cls)
                 correct_percls = [correct_percls[x] + correct_temp[x] for x in range(num_cls)]
