@@ -19,7 +19,7 @@ def _hparams(algorithm, dataset, random_state):
     hparams['class_balanced'] = (False, False)
 
     if dataset in IMBALANCE: # for imbalance dataset(no random version support)
-        hparams['dataset_version'] = ('MMD','MMD')
+        hparams['dataset_version'] = ('MLDG','MLDG')
         hparams['numcls'] = (5,5)
         hparams['testrate'] = (0.2,0.2)
         hparams['valrate'] = (0.1,0.1)

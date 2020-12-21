@@ -51,13 +51,13 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 domain_list = list.copy(vars(imbalance_dataset)[dataset].ENVIRONMENTS)
 
-# csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MLDG_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/MLDG_test_result_summary.csv'
+# csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MLDG_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/test_result_summary.csv'
 # csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MLDG_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/MLDG_minor_mean_result.csv'
 
 
-# csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MMD_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/MMD_test_result_summary.csv'
-csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MMD_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/MMD_minor_mean_result.csv'
-imbrate=[1,2,4,8,16]
+csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MMD_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/test_result_summary.csv'
+# csv_path = '/home/genie/PycharmProjects/DomainBed/domainbed/imbalance_result_output/MMD_dataset_DomainNet_numcls_5_testrate_02_valrate_01_fixtarget_0/MMD_minor_mean_result.csv'
+imbrate=[1,2,4,8,16,32,64]
 
 df = pd.read_csv(csv_path)
 
@@ -118,5 +118,5 @@ for runtarget in runtarget_list:
             newdf = pd.concat([newdf,temp_df],axis=0)
 
 folderpath = os.path.dirname(csv_path)
-# newdf.to_csv(os.path.join(folderpath,'minor_mean_result.csv'),index=False)
+newdf.to_csv(os.path.join(folderpath,'minor_mean_result.csv'),index=False)
 

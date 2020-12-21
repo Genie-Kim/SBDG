@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # imbtrain(args, [1, 5], 1, 2, 'domain')  # debug
     ORIGINDATA = 'DomainNet'
     clsordom = 'domain'
-    imbrates = [1,2,4,8,16]
+    imbrates = [1,2,4,8,16,32,64]
     # check hparams_registry and delete the fixed target domain number.
     # domains = [0,1,2,3,4,5] # 여기서 fixed target domain은 뺀다.
     domains = [1,2,3,4,5]

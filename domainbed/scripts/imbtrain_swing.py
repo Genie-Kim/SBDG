@@ -342,8 +342,8 @@ if __name__ == "__main__":
     for running_target_tuple in list(combinations(domains, args.num_running_targets)):
         running_targets = [x for x in running_target_tuple]
         balance_setting_check = False  # balance setting을 했는가.
-        if 1 in running_targets or 2 in running_targets or 3 in running_targets:
-            continue
+        # if 1 in running_targets or 2 in running_targets or 3 in running_targets:
+        #     continue
         for minor_domain in domains:
             if not minor_domain in running_targets:
                 for imbrate in imbrates:
@@ -360,8 +360,8 @@ if __name__ == "__main__":
         for running_target_tuple in list(combinations(domains,args.num_running_targets)):
             running_targets = [x for x in running_target_tuple]
             balance_setting_check = False # balance setting을 했는가.
-            if 1 in running_targets or 2 in running_targets or 3 in running_targets:
-                continue
+            # if 1 in running_targets or 2 in running_targets or 3 in running_targets:
+            #     continue
             for minor_domain in domains:
                 if not minor_domain in running_targets:
                     for imbrate in imbrates:
