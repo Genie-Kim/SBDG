@@ -4,6 +4,7 @@ import os
 import torch
 from PIL import Image, ImageFile
 from torchvision import transforms
+import torchvision.datasets.folder
 from torch.utils.data import TensorDataset
 from torchvision.datasets import MNIST, ImageFolder
 from torchvision.transforms.functional import rotate
@@ -161,7 +162,8 @@ class RotatedMNIST(MultipleEnvironmentMNIST):
     def rotate_dataset(self, images, labels, angle):
         rotation = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.Lambda(lambda x: rotate(x, angle, fill=(0,), resample=Image.BICUBIC)),
+            transforms.Lambda(lambda x: rotate(x, angle, fill=(0,),
+                                               resample=Image.BICUBIC)),
             transforms.ToTensor()])
 
         x = torch.zeros(len(images), 1, 28, 28)
@@ -249,8 +251,7 @@ class TerraIncognita(MultipleEnvironmentImageFolder):
 
 class SVIRO(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
-    ENVIRONMENT_NAMES = ["aclass", "escape", "hilux", "i3", "lexus", "tesla", "tiguan", "tucson", "x5", "zoe"]
+    ENVIRONMENTS = ["aclass", "escape", "hilux", "i3", "lexus", "tesla", "tiguan", "tucson", "x5", "zoe"]
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "sviro/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
-

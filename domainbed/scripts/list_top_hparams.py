@@ -1,5 +1,12 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
+"""
+Example usage:
+python -u -m domainbed.scripts.list_top_hparams \
+    --input_dir domainbed/misc/test_sweep_data --algorithm ERM \
+    --dataset VLCS --test_env 0
+"""
+
 import collections
 
 
@@ -23,51 +30,8 @@ from domainbed import model_selection
 from domainbed.lib.query import Q
 import warnings
 
-def format_mean(data, latex):
-    """Given a list of datapoints, return a string describing their mean and
-    standard error"""
-    if len(data) == 0:
-        return None, None, "X"
-    mean = 100 * np.mean(list(data))
-    err = 100 * np.std(list(data) / np.sqrt(len(data)))
-    if latex:
-        return mean, err, "{:.1f} $\\pm$ {:.1f}".format(mean, err)
-    else:
-        return mean, err, "{:.1f} +/- {:.1f}".format(mean, err)
+def todo_rename(records, selection_method, latex):
 
-def print_table(table, header_text, row_labels, col_labels, colwidth=10,
-    latex=True):
-    """Pretty-print a 2D array of data, optionally with row/col labels"""
-    print("")
-
-    if latex:
-        num_cols = len(table[0])
-        print("\\begin{center}")
-        print("\\adjustbox{max width=\\textwidth}{%")
-        print("\\begin{tabular}{l" + "c" * num_cols + "}")
-        print("\\toprule")
-    else:
-        print("--------", header_text)
-
-    for row, label in zip(table, row_labels):
-        row.insert(0, label)
-
-    if latex:
-        col_labels = ["\\textbf{" + str(col_label).replace("%", "\\%") + "}"
-            for col_label in col_labels]
-    table.insert(0, col_labels)
-
-    for r, row in enumerate(table):
-        misc.print_row(row, colwidth=colwidth, latex=latex)
-        if latex and r == 0:
-            print("\\midrule")
-    if latex:
-        print("\\bottomrule")
-        print("\\end{tabular}}")
-        print("\\end{center}")
-
-def print_results_tables(records, selection_method, latex):
-    """Given all records, print a results table for each dataset."""
     grouped_records = reporting.get_grouped_records(records).map(lambda group:
         { **group, "sweep_acc": selection_method.sweep_acc(group["records"]) }
     ).filter(lambda g: g["sweep_acc"] is not None)
@@ -146,25 +110,22 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="Domain generalization testbed")
-    parser.add_argument("--input_dir", type=str, default="")
-    parser.add_argument("--latex", action="store_true")
+    parser.add_argument("--input_dir", required=True)
+    parser.add_argument('--dataset', required=True)
+    parser.add_argument('--algorithm', required=True)
+    parser.add_argument('--test_env', type=int, required=True)
     args = parser.parse_args()
 
-    results_file = "results.tex" if args.latex else "results.txt"
-
-    sys.stdout = misc.Tee(os.path.join(args.input_dir, results_file), "w")
-
     records = reporting.load_records(args.input_dir)
-   
-    if args.latex:
-        print("\\documentclass{article}")
-        print("\\usepackage{booktabs}")
-        print("\\usepackage{adjustbox}")
-        print("\\begin{document}")
-        print("\\section{Full DomainBed results}") 
-        print("% Total records:", len(records))
-    else:
-        print("Total records:", len(records))
+    print("Total records:", len(records))
+
+    records = reporting.get_grouped_records(records)
+    records = records.filter(
+        lambda r:
+            r['dataset'] == args.dataset and
+            r['algorithm'] == args.algorithm and
+            r['test_env'] == args.test_env
+    )
 
     SELECTION_METHODS = [
         model_selection.IIDAccuracySelectionMethod,
@@ -173,11 +134,19 @@ if __name__ == "__main__":
     ]
 
     for selection_method in SELECTION_METHODS:
-        if args.latex:
-            print()
-            print("\\subsection{{Model selection: {}}}".format(
-                selection_method.name)) 
-        print_results_tables(records, selection_method, args.latex)
+        print(f'Model selection: {selection_method.name}')
 
-    if args.latex:
-        print("\\end{document}")
+        for group in records:
+            print(f"trial_seed: {group['trial_seed']}")
+            best_hparams = selection_method.hparams_accs(group['records'])
+            for run_acc, hparam_records in best_hparams:
+                print(f"\t{run_acc}")
+                for r in hparam_records:
+                    assert(r['hparams'] == hparam_records[0]['hparams'])
+                print("\t\thparams:")
+                for k, v in sorted(hparam_records[0]['hparams'].items()):
+                    print('\t\t\t{}: {}'.format(k, v))
+                print("\t\toutput_dirs:")
+                output_dirs = hparam_records.select('args.output_dir').unique()
+                for output_dir in output_dirs:
+                    print(f"\t\t\t{output_dir}")

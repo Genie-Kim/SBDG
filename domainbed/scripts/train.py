@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
             results.update({
                 'hparams': hparams,
-                'args': vars(args)
+                'args': vars(args)    
             })
 
             epochs_path = os.path.join(args.output_dir, 'results.jsonl')

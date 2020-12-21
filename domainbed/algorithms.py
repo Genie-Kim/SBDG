@@ -25,7 +25,8 @@ ALGORITHMS = [
     'SagNet',
     'ARM',
     'VREx',
-    'RSC'
+    'RSC',
+    'SD'
 ]
 
 def get_algorithm_class(algorithm_name):
@@ -150,6 +151,7 @@ class AbstractDANN(Algorithm):
             betas=(self.hparams['beta1'], 0.9))
 
     def update(self, minibatches):
+        device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
         all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
@@ -160,7 +162,7 @@ class AbstractDANN(Algorithm):
             disc_input = all_z
         disc_out = self.discriminator(disc_input)
         disc_labels = torch.cat([
-            torch.full((x.shape[0], ), i, dtype=torch.int64, device='cuda')
+            torch.full((x.shape[0], ), i, dtype=torch.int64, device=device)
             for i, (x, y) in enumerate(minibatches)
         ])
 
@@ -223,7 +225,8 @@ class IRM(ERM):
 
     @staticmethod
     def _irm_penalty(logits, y):
-        scale = torch.tensor(1.).cuda().requires_grad_()
+        device = "cuda" if logits[0][0].is_cuda else "cpu"
+        scale = torch.tensor(1.).to(device).requires_grad_()
         loss_1 = F.cross_entropy(logits[::2] * scale, y[::2])
         loss_2 = F.cross_entropy(logits[1::2] * scale, y[1::2])
         grad_1 = autograd.grad(loss_1, [scale], create_graph=True)[0]
@@ -232,6 +235,7 @@ class IRM(ERM):
         return result
 
     def update(self, minibatches):
+        device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         penalty_weight = (self.hparams['irm_lambda'] if self.update_count
                           >= self.hparams['irm_penalty_anneal_iters'] else
                           1.0)
@@ -385,9 +389,6 @@ class MLDG(ERM):
     Algorithm 1 / Equation (3) from: https://arxiv.org/pdf/1710.03463.pdf
     Related: https://arxiv.org/pdf/1703.03400.pdf
     Related: https://arxiv.org/pdf/1910.13580.pdf
-
-    TODO: update() has at least one bug, possibly more. Disabling this whole
-    algorithm until it gets figured out.
     """
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(MLDG, self).__init__(input_shape, num_classes, num_domains,
@@ -708,8 +709,9 @@ class SagNet(Algorithm):
         return self.network_s(self.randomize(self.network_f(x), "content"))
     
     def randomize(self, x, what="style", eps=1e-5):
+        device = "cuda" if x.is_cuda else "cpu"
         sizes = x.size()
-        alpha = torch.rand(sizes[0], 1).cuda()
+        alpha = torch.rand(sizes[0], 1).to(device)
 
         if len(sizes) == 4:
             x = x.view(sizes[0], sizes[1], -1)
@@ -771,6 +773,8 @@ class RSC(ERM):
         self.num_classes = num_classes
 
     def update(self, minibatches):
+        device = "cuda" if minibatches[0][0].is_cuda else "cpu"
+
         # inputs
         all_x = torch.cat([x for x, y in minibatches])
         # labels
@@ -789,7 +793,7 @@ class RSC(ERM):
         percentiles = np.percentile(all_g.cpu(), self.drop_f, axis=1)
         percentiles = torch.Tensor(percentiles)
         percentiles = percentiles.unsqueeze(1).repeat(1, all_g.size(1))
-        mask_f = all_g.lt(percentiles.cuda()).float()
+        mask_f = all_g.lt(percentiles.to(device)).float()
 
         # Equation (3): mute top-gradient-percentile activations
         all_f_muted = all_f * mask_f
@@ -815,3 +819,29 @@ class RSC(ERM):
         self.optimizer.step()
 
         return {'loss': loss.item()}
+
+
+class SD(ERM):
+    """
+    Gradient Starvation: A Learning Proclivity in Neural Networks
+    Equation 25 from [https://arxiv.org/pdf/2011.09468.pdf]
+    """
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(SD, self).__init__(input_shape, num_classes, num_domains,
+                                        hparams)
+        self.sd_reg = hparams["sd_reg"] 
+
+    def update(self, minibatches):
+        all_x = torch.cat([x for x,y in minibatches])
+        all_y = torch.cat([y for x,y in minibatches])
+        all_p = self.predict(all_x)
+
+        loss = F.cross_entropy(all_p, all_y)
+        penalty = (all_p ** 2).mean()
+        objective = loss + self.sd_reg * penalty
+
+        self.optimizer.zero_grad()
+        objective.backward()
+        self.optimizer.step()
+
+        return {'loss': loss.item(), 'penalty': penalty.item()}
