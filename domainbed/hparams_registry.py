@@ -92,6 +92,18 @@ def _hparams(algorithm, dataset, random_state):
     elif algorithm == "VREx":
         hparams['vrex_lambda'] = (1e1, 10**random_state.uniform(-1, 5))
         hparams['vrex_penalty_anneal_iters'] = (500, int(10**random_state.uniform(0, 4)))
+    elif algorithm == "MFM_MLDG":
+        hparams['small_meta_data'] = (True, True)
+        hparams["mod_lr"] = (1e-4,1e-4)
+        hparams['num_smallmetaset'] = (30,30)
+        hparams['hidden_neurons'] = (256,256)
+        hparams['mldg_beta'] = (1., 10 ** random_state.uniform(-1, 1))
+        hparams['mod_in_outer'] = (True,True) # modulation in outer update
+        hparams['mixdom_metaset'] = (True,True)
+        if hparams['mixdom_metaset'][0]: # if mixing
+            hparams['small_batch'] = (7,7) # final batch number = x*도메인개수
+        else:
+            hparams['small_batch'] = (30,30)
 
     return hparams
 

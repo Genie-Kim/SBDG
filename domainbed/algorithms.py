@@ -9,7 +9,8 @@ import copy
 import numpy as np
 
 from domainbed import networks
-from domainbed.lib.misc import random_pairs_of_minibatches
+from domainbed.lib.misc import random_pairs_of_minibatches,random_pairs_of_minibatches_outputdom
+import higher
 
 ALGORITHMS = [
     'ERM',
@@ -25,7 +26,8 @@ ALGORITHMS = [
     'SagNet',
     'ARM',
     'VREx',
-    'RSC'
+    'RSC',
+    'MFM_MLDG'
 ]
 
 def get_algorithm_class(algorithm_name):
@@ -815,3 +817,243 @@ class RSC(ERM):
         self.optimizer.step()
 
         return {'loss': loss.item()}
+
+class MNet(torch.nn.Module):
+    def __init__(self, input, hidden1, output):
+        super(MNet, self).__init__()
+        self.mlp = nn.Sequential(nn.Linear(input, hidden1),
+                      nn.ReLU(inplace=True),
+                      nn.Linear(hidden1, output))
+
+    def forward(self, x):
+        out = self.mlp(x)
+        param_dim = int(out.shape[1]/2)
+        gamma = out[:, :param_dim]
+        beta = out[:, param_dim:]
+        return (F.softmax(gamma,dim=1) * param_dim, beta)
+
+
+class MFM_MLDG(ERM):
+    """
+    Model-Agnostic Meta-Learning
+    Algorithm 1 / Equation (3) from: https://arxiv.org/pdf/1710.03463.pdf
+    Related: https://arxiv.org/pdf/1703.03400.pdf
+    Related: https://arxiv.org/pdf/1910.13580.pdf
+
+    TODO: update() has at least one bug, possibly more. Disabling this whole
+    algorithm until it gets figured out.
+    """
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(MFM_MLDG, self).__init__(input_shape, num_classes, num_domains,
+                                   hparams)
+        self.modulator = MNet(num_classes,hparams['hidden_neurons'],self.featurizer.n_outputs * 2)
+        self.optimMFM = torch.optim.SGD(
+            self.modulator.parameters(),
+            lr=self.hparams["mod_lr"],
+            momentum=0.9
+        )
+
+    def update(self, minibatches,small_meta_loader):
+        """
+        Terms being computed:
+            * Li = Loss(xi, yi, params)
+            * Gi = Grad(Li, params)
+
+            * Lj = Loss(xj, yj, Optimizer(params, grad(Li, params)))
+            * Gj = Grad(Lj, params)
+
+            * params = Optimizer(params, Grad(Li + beta * Lj, params))
+            *        = Optimizer(params, Gi + beta * Gj)
+
+        That is, when calling .step(), we want grads to be Gi + beta * Gj
+
+        For computational efficiency, we do not compute second derivatives.
+        """
+        num_mb = len(minibatches)
+        objective = 0
+        self.optimMFM.zero_grad()
+        self.optimizer.zero_grad()
+        for p in self.network.parameters():
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+                p.grad.detach()
+
+        for (xi, yi, di), (xj, yj, dj) in random_pairs_of_minibatches_outputdom(minibatches):
+            small_meta_batch = [(x.to("cuda"), y.to("cuda"))
+                                  for x, y in next(zip(*small_meta_loader))]
+            if self.hparams['mixdom_metaset']: # small meta dataset. domain mixing
+                xs = torch.cat([x for x, y in small_meta_batch])
+                ys = torch.cat([y for x, y in small_meta_batch])
+            else: # small meta dataset. not domain mixing
+                xs = small_meta_batch[di][0]
+                ys = small_meta_batch[di][1]
+
+
+            inner_net = copy.deepcopy(self.network)
+            inner_opt = torch.optim.Adam(
+                inner_net.parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt.zero_grad()
+            # second order update code
+            # differentiable optimizer initialization
+
+            inner_net_feature = higher.patch.monkeypatch(inner_net[0])
+            opt_feat = torch.optim.Adam(
+                inner_net[0].parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt_feat = higher.optim.get_diff_optim(
+                opt_feat, inner_net[0].parameters(), inner_net_feature, override=None)
+
+            inner_net_classfier = higher.patch.monkeypatch(inner_net[1])
+            opt_cls = torch.optim.Adam(
+                inner_net[1].parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt_cls = higher.optim.get_diff_optim(
+                opt_cls, inner_net[1].parameters(), inner_net_classfier, override=None)
+            inner_obj = 0
+            # meta modulator update.
+            gammas, betas = self.modulator(inner_net(xi).data)
+            modulated_feat = torch.add(torch.mul(inner_net_feature(xi), gammas),
+                                       betas)  # channel wise로 되는건 확인 안됨, 이미 feature가 vector로 나오기 때문.
+            li = F.cross_entropy(inner_net_classfier(modulated_feat), yi)
+            inner_opt_cls.step(li)
+            inner_opt_feat.step(li) # inner net one step updated(step 1)
+
+            self.optimMFM.zero_grad()
+            meta_obj = F.cross_entropy(inner_net_classfier(inner_net_feature(xs)), ys)
+            meta_obj.backward() # step 2
+            self.optimMFM.step() # update modulator
+            # now modulator updated #########################
+            # delete differentiable optimizer
+            del inner_net_feature
+            del inner_net_classfier
+            del inner_opt_feat
+            del inner_opt_cls
+            del opt_cls
+            del opt_feat
+
+            gammas, betas = self.modulator(inner_net(xi).data)
+            modulated_feat = torch.add(torch.mul(inner_net[0](xi), gammas),betas)
+            inner_obj = F.cross_entropy(inner_net[1](modulated_feat), yi)
+
+            inner_opt.zero_grad()
+            inner_obj.backward()
+            inner_opt.step()
+
+            # The network has now accumulated gradients Gi
+            # The clone-network has now parameters P - lr * Gi
+            for p_tgt, p_src in zip(self.network.parameters(),
+                                    inner_net.parameters()):
+                if p_src.grad is not None:
+                    p_tgt.grad.data.add_(p_src.grad.data / num_mb)
+
+            # `objective` is populated for reporting purposes
+            objective += inner_obj.item()
+
+            if self.hparams['mod_in_outer']:
+                # modulating in outer update################
+                gammas, betas = self.modulator(inner_net(xj).data)
+                modulated_feat = torch.add(torch.mul(inner_net[0](xj), gammas),betas)
+                loss_inner_j = F.cross_entropy(inner_net[1](modulated_feat), yj)
+            else:
+                # this computes Gj on the clone-network
+                loss_inner_j = F.cross_entropy(inner_net(xj), yj)
+
+
+            grad_inner_j = autograd.grad(loss_inner_j, inner_net.parameters(),
+                allow_unused=True)
+
+            # `objective` is populated for reporting purposes
+            objective += (self.hparams['mldg_beta'] * loss_inner_j).item()
+
+            for p, g_j in zip(self.network.parameters(), grad_inner_j):
+                if g_j is not None:
+                    p.grad.data.add_(
+                        self.hparams['mldg_beta'] * g_j.data / num_mb)
+
+            # The network has now accumulated gradients Gi + beta * Gj
+            # Repeat for all train-test splits, do .step()
+
+        objective /= len(minibatches)
+
+        self.optimizer.step()
+        torch.cuda.empty_cache()
+
+        return {'loss': objective}
+
+
+
+
+
+
+    # This commented "update" method back-propagates through the gradients of
+    # the inner update, as suggested in the original MAML paper.  However, this
+    # is twice as expensive as the uncommented "update" method, which does not
+    # compute second-order derivatives, implementing the First-Order MAML
+    # method (FOMAML) described in the original MAML paper.
+
+    # def update(self, minibatches):
+    #     objective = 0
+    #     beta = self.hparams["beta"]
+    #     inner_iterations = self.hparams["inner_iterations"]
+
+    #     self.optimizer.zero_grad()
+
+        # with higher.innerloop_ctx(self.network, self.optimizer,
+    #         copy_initial_weights=False) as (inner_network, inner_optimizer):
+
+    #         for (xi, yi), (xj, yj) in random_pairs_of_minibatches(minibatches):
+    #             for inner_iteration in range(inner_iterations):
+    #                 li = F.cross_entropy(inner_network(xi), yi)
+    #                 inner_optimizer.step(li)
+    #
+    #             objective += F.cross_entropy(self.network(xi), yi)
+    #             objective += beta * F.cross_entropy(inner_network(xj), yj)
+
+    #         objective /= len(minibatches)
+    #         objective.backward()
+    #
+    #     self.optimizer.step()
+    #
+    #     return objective
+
+# self.optimMFM.zero_grad()
+# self.optimizer.zero_grad()
+# inner_net = copy.deepcopy(self.network)
+# inner_opt = torch.optim.Adam(
+#     inner_net.parameters(),
+#     lr=self.hparams["lr"],
+#     weight_decay=self.hparams['weight_decay']
+# )
+# gammas, betas = self.modulator(inner_net(xi).data)
+# modulated_feat = torch.add(torch.mul(inner_net[0](xi), gammas),
+#                            betas)  # channel wise로 되는건 확인 안됨, 이미 feature가 vector로 나오기 때문.
+# inner_obj = F.cross_entropy(inner_net[1](modulated_feat), yi)
+# inner_opt.zero_grad()
+# # inner_obj.backward()
+# # inner_opt.step()
+#
+# self.optimMFM.zero_grad()
+#
+# grads = torch.autograd.grad(inner_obj, list(inner_net.parameters()), create_graph=True)
+# temp_weights = [w - self.hparams["lr"] * g for w, g in zip(inner_net.parameters(), grads)]
+#
+# inner_net2 = copy.deepcopy(self.network)
+# inner_opt2 = torch.optim.Adam(
+#     inner_net2.parameters(),
+#     lr=self.hparams["lr"],
+#     weight_decay=self.hparams['weight_decay']
+# )
+# for w, tw in zip(inner_net2.parameters(), temp_weights):
+#     w.detach().copy_(tw)
+#     w.requires_grad_(True)
+# inner_obj = F.cross_entropy(inner_net2(xs), ys)
+# # inner_opt.zero_grad()
+# inner_obj.backward()
+# self.optimMFM.step()

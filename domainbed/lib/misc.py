@@ -89,6 +89,21 @@ def split_dataset(dataset, n, seed=0):
     keys_2 = keys[n:]
     return _SplitDataset(dataset, keys_1), _SplitDataset(dataset, keys_2)
 
+def split_smallmetaset(base_set, input_set, num_per_cls):
+    meta_keys = []
+    remain_keys = []
+    n_classes = len(base_set.classes)
+    for k in range(n_classes):
+        temp_keys = []
+        for x in input_set.keys:
+            if len(temp_keys)>=num_per_cls:
+                break
+            if base_set[x][1] == k:
+                temp_keys.append(x)
+        meta_keys += temp_keys
+    remain_keys = [x for x in input_set.keys if x not in meta_keys]
+    return _SplitDataset(base_set,meta_keys), _SplitDataset(base_set,remain_keys)
+
 def random_pairs_of_minibatches(minibatches):
     perm = torch.randperm(len(minibatches)).tolist()
     pairs = []
@@ -104,6 +119,23 @@ def random_pairs_of_minibatches(minibatches):
         pairs.append(((xi[:min_n], yi[:min_n]), (xj[:min_n], yj[:min_n])))
 
     return pairs
+
+def random_pairs_of_minibatches_outputdom(minibatches):
+    perm = torch.randperm(len(minibatches)).tolist()
+    pairs = []
+
+    for i in range(len(minibatches)):
+        j = i + 1 if i < (len(minibatches) - 1) else 0
+
+        xi, yi = minibatches[perm[i]][0], minibatches[perm[i]][1]
+        xj, yj = minibatches[perm[j]][0], minibatches[perm[j]][1]
+
+        min_n = min(len(xi), len(xj))
+
+        pairs.append(((xi[:min_n], yi[:min_n],perm[i]), (xj[:min_n], yj[:min_n],perm[j])))
+
+    return pairs
+
 
 def accuracy(network, loader, weights, device):
     correct = 0
