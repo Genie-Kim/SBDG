@@ -21,6 +21,10 @@ from domainbed import algorithms
 from domainbed.lib import misc
 from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
+import re
+from tensorboardX import SummaryWriter
+from tqdm import tqdm
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
     parser.add_argument('--data_dir', type=str)
@@ -96,14 +100,23 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
 
+    source_names = [x for i, x in enumerate(dataset.ENVIRONMENTS) if i not in args.test_envs]
+    target_names = [x for i, x in enumerate(dataset.ENVIRONMENTS) if i in args.test_envs]
+    class_names = list(dataset.datasets[0].classes)
+
     # Split each env into an 'in-split' and an 'out-split'. We'll train on
     # each in-split except the test envs, and evaluate on all splits.
     in_splits = []
     out_splits = []
+    meta_splits = []
     for env_i, env in enumerate(dataset):
         out, in_ = misc.split_dataset(env,
             int(len(env)*args.holdout_fraction),
             misc.seed_hash(args.trial_seed, env_i))
+        if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+            # in_ 에서 class별 hparams['num_smallmetaset']개수만큼 뽑아서 balanced small meta set만든다.
+            smallmetaset_perdom, in_ = misc.split_smallmetaset(env,in_,hparams['num_smallmetaset'])
+            meta_splits.append(smallmetaset_perdom)
         if hparams['class_balanced']:
             in_weights = misc.make_weights_for_balanced_classes(in_)
             out_weights = misc.make_weights_for_balanced_classes(out)
@@ -119,6 +132,15 @@ if __name__ == "__main__":
         num_workers=dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(in_splits)
         if i not in args.test_envs]
+    if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+        small_meta_loader = [InfiniteDataLoader(
+            dataset=env,
+            weights=None,
+            batch_size=hparams['small_batch'],
+            num_workers=2)
+            for i, env in enumerate(meta_splits)
+            if i not in args.test_envs]
+
 
     eval_loaders = [FastDataLoader(
         dataset=env,
@@ -149,15 +171,54 @@ if __name__ == "__main__":
     checkpoint_freq = args.checkpoint_freq or dataset.CHECKPOINT_FREQ
 
     last_results_keys = None
-    for step in range(start_step, n_steps):
+
+    writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
+
+    # if args.algorithms in ['MWN_MLDG']:
+    #     loss_table_dom_cls = torch.zeros(algorithm.num_domains,algorithm.num_classes,4).cuda()
+    # elif args.algorithms in ['MLDG']:
+    #     loss_table_dom_cls = torch.zeros(algorithm.num_domains,algorithm.num_classes,2).cuda()
+
+    loss_table_dom_cls = []
+
+    for step in tqdm(range(start_step, n_steps)):
         step_start_time = time.time()
         minibatches_device = [(x.to(device), y.to(device))
             for x,y in next(train_minibatches_iterator)]
-        step_vals = algorithm.update(minibatches_device)
+        if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+            step_vals = algorithm.update(minibatches_device,small_meta_loader)
+        else:
+            step_vals = algorithm.update(minibatches_device)
         checkpoint_vals['step_time'].append(time.time() - step_start_time)
 
         for key, val in step_vals.items():
+            if key == 'chart':
+                inloss={}
+                outloss={}
+                metloss={}
+                weit={}
+                for d in range(algorithm.num_domains):
+                    for c in range(algorithm.num_classes):
+                        loss_table_dom_cls.append([source_names[d],class_names[c]] + val[d,c,:].tolist() + [step])
+                        if args.algorithm in ['MWN_MLDG']:
+                            inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
+                            outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
+                            metloss[source_names[d]] = torch.mean(val[d,:,2]).tolist()
+                            weit[source_names[d]] = torch.mean(val[d,:,3]).tolist()
+                        elif args.algorithm in ['MLDG']:
+                            inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
+                            outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
+
+                writer.add_scalars('inner loss info per domain',inloss, step)
+                writer.add_scalars('outer loss info per domain',outloss, step)
+                if args.algorithm in ['MWN_MLDG']:
+                    writer.add_scalars('meta loss info per domain',metloss, step)
+                    writer.add_scalars('weight info per domain',weit, step)
+                continue
+
             checkpoint_vals[key].append(val)
+            if key == 'loss':
+                writer.add_scalar('train loss', step_vals['loss'], step)
 
         if step % checkpoint_freq == 0:
             results = {
@@ -172,6 +233,41 @@ if __name__ == "__main__":
             for name, loader, weights in evals:
                 acc = misc.accuracy(algorithm, loader, weights, device)
                 results[name+'_acc'] = acc
+
+            source_train_accs = {}
+            source_val_accs = {}
+            target_train_accs = {}
+            target_val_accs = {}
+
+            p = re.compile('env(?P<env>\d+)_(?P<inorout>\w+)_acc')
+            for key,val in results.items():
+                temp = p.search(key)
+                if temp is not None:
+                    env_i = int(temp.group('env'))
+                    inorout = temp.group('inorout')
+                    if env_i in args.test_envs: # target in
+                        if inorout == 'in':
+                            target_train_accs[dataset.ENVIRONMENTS[env_i]]=val
+                        else:
+                            target_val_accs[dataset.ENVIRONMENTS[env_i]]=val
+
+                    else: # sources
+                        if inorout == 'in':
+                            source_train_accs[dataset.ENVIRONMENTS[env_i]]=val
+                        else:
+                            source_val_accs[dataset.ENVIRONMENTS[env_i]]=val
+
+            writer.add_scalars('source train accuracy of',source_train_accs, step)
+            writer.add_scalars('source val accuracy of', source_val_accs, step)
+            writer.add_scalars('target train accuracy of', target_train_accs, step)
+            writer.add_scalars('target val accuracy of', target_val_accs, step)
+
+
+            source_val_mean = np.array([v for k,v in source_val_accs.items()]).mean()
+            target_val_mean = np.array([v for k,v in target_val_accs.items()]).mean()
+
+            writer.add_scalar('source val mean', source_val_mean, step)
+            writer.add_scalar('target val mean',target_val_mean,step)
 
             results_keys = sorted(results.keys())
             if results_keys != last_results_keys:
@@ -207,3 +303,17 @@ if __name__ == "__main__":
 
     with open(os.path.join(args.output_dir, 'done'), 'w') as f:
         f.write('done')
+
+
+    if args.algorithm in ['MWN_MLDG']:
+        import pandas as pd
+        df = pd.DataFrame(data = loss_table_dom_cls,columns = ['domain','class','innerloss','outerloss','metaloss','weight','step'])
+        df.to_csv(os.path.join(args.output_dir,'lossinfo_per_domcls.csv'))
+    elif args.algorithm in ['MLDG']:
+        import pandas as pd
+        df = pd.DataFrame(data=loss_table_dom_cls,
+                          columns=['domain', 'class', 'innerloss', 'outerloss', 'step'])
+        df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
+
+
+    writer.close()

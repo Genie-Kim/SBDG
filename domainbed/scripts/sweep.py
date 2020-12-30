@@ -94,13 +94,15 @@ def all_test_env_combinations(n):
             yield [i, j]
 
 def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
-    data_dir, hparams):
+    data_dir, hparams,checkpoint_freq):
     args_list = []
     for trial_seed in range(n_trials):
         for dataset in dataset_names:
             for algorithm in algorithms:
-                all_test_envs = all_test_env_combinations(
-                    datasets.num_environments(dataset))
+                # all_test_envs = all_test_env_combinations(
+                #     datasets.num_environments(dataset))
+                # all_test_envs = [[x] for x in range(datasets.num_environments(dataset))] # for only one test envs
+                all_test_envs = [3] # for hiper parameter search(test 1 dom)
                 for test_envs in all_test_envs:
                     for hparams_seed in range(n_hparams):
                         train_args = {}
@@ -114,6 +116,8 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
                             algorithm, test_envs, hparams_seed, trial_seed)
                         if steps is not None:
                             train_args['steps'] = steps
+                        if checkpoint_freq is not None:
+                            train_args['checkpoint_freq'] = checkpoint_freq
                         if hparams is not None:
                             train_args['hparams'] = hparams
                         args_list.append(train_args)
@@ -137,6 +141,8 @@ if __name__ == "__main__":
     parser.add_argument('--data_dir', type=str, required=True)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--n_trials', type=int, default=3)
+    parser.add_argument('--checkpoint_freq', type=int, default=None,
+        help='Checkpoint every N steps. Default is dataset-dependent.')
     parser.add_argument('--command_launcher', type=str, required=True)
     parser.add_argument('--steps', type=int, default=None)
     parser.add_argument('--hparams', type=str, default=None)
@@ -150,7 +156,8 @@ if __name__ == "__main__":
         n_hparams=args.n_hparams,
         steps=args.steps,
         data_dir=args.data_dir,
-        hparams=args.hparams
+        hparams=args.hparams,
+        checkpoint_freq = args.checkpoint_freq
     )
 
     jobs = [Job(train_args, args.output_dir) for train_args in args_list]
