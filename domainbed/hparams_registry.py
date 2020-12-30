@@ -117,6 +117,10 @@ def _hparams(algorithm, dataset, random_state):
             hparams['small_batch'] = (7,7) # final batch number = x*도메인개수
         else:
             hparams['small_batch'] = (30,30)
+    # 특정한 순서를 두고 hyper parameter search를 하고 싶을 때는
+    # hlist = [0.1,0.01,0.0001]
+    # hiter = iter(hlist)
+    # 그리고 random hyper parameter 자리에 next(hiter)를 하면 된다.
 
     return hparams
 
