@@ -131,7 +131,7 @@ if __name__ == "__main__":
             dataset=env,
             weights=None,
             batch_size=hparams['small_batch'],
-            num_workers=dataset.N_WORKERS)
+            num_workers=2)
             for i, env in enumerate(meta_splits)
             if i not in args.test_envs]
 

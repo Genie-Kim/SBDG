@@ -27,7 +27,8 @@ ALGORITHMS = [
     'ARM',
     'VREx',
     'RSC',
-    'MFM_MLDG'
+    'MFM_MLDG',
+    'MWN_MLDG'
 ]
 
 def get_algorithm_class(algorithm_name):
@@ -818,9 +819,9 @@ class RSC(ERM):
 
         return {'loss': loss.item()}
 
-class MNet(torch.nn.Module):
+class MFNet(torch.nn.Module):
     def __init__(self, input, hidden1, output):
-        super(MNet, self).__init__()
+        super(MFNet, self).__init__()
         self.mlp = nn.Sequential(nn.Linear(input, hidden1),
                       nn.ReLU(inplace=True),
                       nn.Linear(hidden1, output))
@@ -846,7 +847,7 @@ class MFM_MLDG(ERM):
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(MFM_MLDG, self).__init__(input_shape, num_classes, num_domains,
                                    hparams)
-        self.modulator = MNet(num_classes,hparams['hidden_neurons'],self.featurizer.n_outputs * 2)
+        self.modulator = MFNet(num_classes,hparams['hidden_neurons'],self.featurizer.n_outputs * 2).cuda()
         self.optimMFM = torch.optim.SGD(
             self.modulator.parameters(),
             lr=self.hparams["mod_lr"],
@@ -916,7 +917,7 @@ class MFM_MLDG(ERM):
             )
             inner_opt_cls = higher.optim.get_diff_optim(
                 opt_cls, inner_net[1].parameters(), inner_net_classfier, override=None)
-            inner_obj = 0
+
             # meta modulator update.
             gammas, betas = self.modulator(inner_net(xi).data)
             modulated_feat = torch.add(torch.mul(inner_net_feature(xi), gammas),
@@ -938,7 +939,8 @@ class MFM_MLDG(ERM):
             del opt_cls
             del opt_feat
 
-            gammas, betas = self.modulator(inner_net(xi).data)
+            with torch.no_grad():
+                gammas, betas = self.modulator(inner_net(xi).data)
             modulated_feat = torch.add(torch.mul(inner_net[0](xi), gammas),betas)
             inner_obj = F.cross_entropy(inner_net[1](modulated_feat), yi)
 
@@ -958,7 +960,8 @@ class MFM_MLDG(ERM):
 
             if self.hparams['mod_in_outer']:
                 # modulating in outer update################
-                gammas, betas = self.modulator(inner_net(xj).data)
+                with torch.no_grad():
+                    gammas, betas = self.modulator(inner_net(xj).data)
                 modulated_feat = torch.add(torch.mul(inner_net[0](xj), gammas),betas)
                 loss_inner_j = F.cross_entropy(inner_net[1](modulated_feat), yj)
             else:
@@ -1057,3 +1060,157 @@ class MFM_MLDG(ERM):
 # # inner_opt.zero_grad()
 # inner_obj.backward()
 # self.optimMFM.step()
+
+class MWNet(torch.nn.Module):
+    def __init__(self, input, hidden1, output):
+        super(MWNet, self).__init__()
+        self.mlp = nn.Sequential(nn.Linear(input, hidden1),
+                      nn.ReLU(inplace=True),
+                      nn.Linear(hidden1, output))
+
+    def forward(self, x):
+        out = self.mlp(x)
+        return torch.sigmoid(out)
+
+
+class MWN_MLDG(ERM):
+    """
+    Model-Agnostic Meta-Learning
+    Algorithm 1 / Equation (3) from: https://arxiv.org/pdf/1710.03463.pdf
+    Related: https://arxiv.org/pdf/1703.03400.pdf
+    Related: https://arxiv.org/pdf/1910.13580.pdf
+
+    TODO: update() has at least one bug, possibly more. Disabling this whole
+    algorithm until it gets figured out.
+    """
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(MWN_MLDG, self).__init__(input_shape, num_classes, num_domains,
+                                   hparams)
+
+        self.weight_net = MWNet(1,hparams['hidden_neurons'],1).cuda()
+        self.optimMWN = torch.optim.Adam(
+            self.weight_net.parameters(),
+            lr=self.hparams["mod_lr"],
+            weight_decay=1e-4
+        )
+
+    def update(self, minibatches,small_meta_loader):
+        """
+        Terms being computed:
+            * Li = Loss(xi, yi, params)
+            * Gi = Grad(Li, params)
+
+            * Lj = Loss(xj, yj, Optimizer(params, grad(Li, params)))
+            * Gj = Grad(Lj, params)
+
+            * params = Optimizer(params, Grad(Li + beta * Lj, params))
+            *        = Optimizer(params, Gi + beta * Gj)
+
+        That is, when calling .step(), we want grads to be Gi + beta * Gj
+
+        For computational efficiency, we do not compute second derivatives.
+        """
+        num_mb = len(minibatches)
+        objective = 0
+        self.optimMWN.zero_grad()
+        self.optimizer.zero_grad()
+        for p in self.network.parameters():
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+                p.grad.detach()
+
+        for (xi, yi, di), (xj, yj, dj) in random_pairs_of_minibatches_outputdom(minibatches):
+
+            # prepare mini batch from meta dataset
+            small_meta_batch = [(x.to("cuda"), y.to("cuda"))
+                                  for x, y in next(zip(*small_meta_loader))]
+            if self.hparams['mixdom_metaset']: # small meta dataset. domain mixing
+                xs = torch.cat([x for x, y in small_meta_batch])
+                ys = torch.cat([y for x, y in small_meta_batch])
+            else: # small meta dataset. not domain mixing
+                xs = small_meta_batch[di][0]
+                ys = small_meta_batch[di][1]
+
+            # clone-network on task "i"
+            inner_net = copy.deepcopy(self.network)
+
+            inner_opt = torch.optim.Adam(
+                inner_net.parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt.zero_grad()
+
+            # meta weight net update
+            with higher.innerloop_ctx(inner_net, inner_opt,
+                copy_initial_weights=False) as (inner_network, inner_optimizer):
+
+                li = F.cross_entropy(inner_network(xi), yi, reduction='none')
+                li = torch.reshape(li, (len(li), 1))
+                v_lambda = self.weight_net(li.data)  # calculate weight
+
+                weighted_loss = torch.mean(torch.mul(li,v_lambda))
+
+                inner_optimizer.step(weighted_loss) # first update inner network
+
+                self.optimMWN.zero_grad()
+                meta_obj = F.cross_entropy(inner_network(xs), ys)
+                meta_obj.backward()
+                self.optimMWN.step()
+
+
+            li = F.cross_entropy(inner_net(xi), yi, reduction='none')
+            li = torch.reshape(li, (len(li), 1))
+
+            with torch.no_grad():
+                v_lambda_new = self.weight_net(li.data)  # calculate weight
+
+            inner_obj = torch.mean(torch.mul(li,v_lambda_new))  # weighted loss
+            inner_opt.zero_grad()
+            inner_obj.backward()
+            inner_opt.step()
+
+
+            # The network has now accumulated gradients Gi
+            # The clone-network has now parameters P - lr * Gi
+            for p_tgt, p_src in zip(self.network.parameters(),
+                                    inner_net.parameters()):
+                if p_src.grad is not None:
+                    p_tgt.grad.data.add_(p_src.grad.data / num_mb)
+
+            # `objective` is populated for reporting purposes
+            objective += inner_obj.item()
+
+            if self.hparams['mod_in_outer']:
+                # modulating in outer update################
+                lj = F.cross_entropy(inner_net(xj), yj, reduction='none')
+                lj = torch.reshape(lj, (len(lj), 1))
+                with torch.no_grad():
+                    v_lambda = self.weight_net(lj.data) # calculate weight
+
+                loss_inner_j = torch.mean(torch.mul(lj,v_lambda))
+            else:
+                # this computes Gj on the clone-network
+                loss_inner_j = F.cross_entropy(inner_net(xj), yj)
+
+
+            grad_inner_j = autograd.grad(loss_inner_j, inner_net.parameters(),
+                allow_unused=True)
+
+            # `objective` is populated for reporting purposes
+            objective += (self.hparams['mldg_beta'] * loss_inner_j).item()
+
+            for p, g_j in zip(self.network.parameters(), grad_inner_j):
+                if g_j is not None:
+                    p.grad.data.add_(
+                        self.hparams['mldg_beta'] * g_j.data / num_mb)
+
+            # The network has now accumulated gradients Gi + beta * Gj
+            # Repeat for all train-test splits, do .step()
+
+        objective /= len(minibatches)
+
+        self.optimizer.step()
+        torch.cuda.empty_cache()
+
+        return {'loss': objective}
