@@ -95,7 +95,7 @@ def split_smallmetaset(base_set, input_set, num_per_cls):
 
     cls_keys = {c:[]for c in range(n_classes)}
     for x in tqdm.tqdm(input_set.keys):
-        cls = base_set[x][1]
+        cls = base_set.targets[x]
         if len(cls_keys[cls])>=num_per_cls:
             continue
         else:

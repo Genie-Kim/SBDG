@@ -124,6 +124,21 @@ def _hparams(algorithm, dataset, random_state):
         else:
             hparams['small_batch'] = (28,28) # hparams['num_smallmetaset']*class*domain 개수보다 작아야함.
 
+    elif algorithm =='CMWN_MLDG':
+        hparams["mod_lr"] = (1e-3,1e-3)
+        hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
+        hparams['1hid'] = (25,100)
+        hparams['2hid'] = (8,100) # 50,4 or 25 8
+        hparams['clscond'] = (False,False)
+        hparams['mldg_beta'] = (1., 1.)
+        hparams['mod_in_outer'] = (True,True) # modulation in outer update
+        hparams['mixdom_metaset'] = (True,True)
+        # final batch 개수는 hparams['num_smallmetaset']*class 개수보다 작아야한다.
+        if hparams['mixdom_metaset'][0]: # if mixing
+            hparams['small_batch'] = (9,9) # final batch number = x*(도메인개수-1) = else문의 개수와 같아야함.,
+        else:
+            hparams['small_batch'] = (28,28) # hparams['num_smallmetaset']*class*domain 개수보다 작아야함.
+
 
     # 특정한 순서를 두고 hyper parameter search를 하고 싶을 때는
     # hlist = [0.1,0.01,0.0001]

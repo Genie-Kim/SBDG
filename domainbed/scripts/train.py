@@ -117,7 +117,7 @@ if __name__ == "__main__":
         out, in_ = misc.split_dataset(env,
             int(len(env)*args.holdout_fraction),
             misc.seed_hash(args.trial_seed, env_i))
-        if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+        if args.algorithm in algorithms.WEIGHTNET:
             # in_ 에서 class별 hparams['num_smallmetaset']개수만큼 뽑아서 balanced small meta set만든다.
             print('make small meta set:',env_i)
             smallmetaset_perdom, in_ = misc.split_smallmetaset(env,in_,hparams['num_smallmetaset'])
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         num_workers=dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(in_splits)
         if i not in args.test_envs]
-    if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+    if args.algorithm in algorithms.WEIGHTNET:
         small_meta_loader = [InfiniteDataLoader(
             dataset=env,
             weights=None,
@@ -185,18 +185,14 @@ if __name__ == "__main__":
     else:
         writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
 
-    # if args.algorithms in ['MWN_MLDG']:
-    #     loss_table_dom_cls = torch.zeros(algorithm.num_domains,algorithm.num_classes,4).cuda()
-    # elif args.algorithms in ['MLDG']:
-    #     loss_table_dom_cls = torch.zeros(algorithm.num_domains,algorithm.num_classes,2).cuda()
-
     loss_table_dom_cls = []
+    info_chart = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
 
     for step in tqdm(range(start_step, n_steps)):
         step_start_time = time.time()
         minibatches_device = [(x.to(device), y.to(device))
             for x,y in next(train_minibatches_iterator)]
-        if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
+        if args.algorithm in algorithms.WEIGHTNET:
             step_vals = algorithm.update(minibatches_device,small_meta_loader)
         else:
             step_vals = algorithm.update(minibatches_device)
@@ -212,22 +208,19 @@ if __name__ == "__main__":
                 for d in range(algorithm.num_domains):
                     for c in range(algorithm.num_classes):
                         loss_table_dom_cls.append([source_names[d],class_names[c]] + val[d,c,:].tolist() + [step])
-                        if args.algorithm in ['MWN_MLDG']:
-                            inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
-                            outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
-                            metloss[source_names[d]] = torch.mean(val[d,:,2]).tolist()
-                            weit[source_names[d]] = torch.mean(val[d,:,3]).tolist()
-                            accu[source_names[d]] = torch.mean(val[d,:,4]).tolist()
-                        elif args.algorithm in ['MLDG']:
+                        if args.algorithm in algorithms.METANET:
                             inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
                             outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
                             accu[source_names[d]] = torch.mean(val[d,:,2]).tolist()
+                        if args.algorithm in algorithms.WEIGHTNET:
+                            weit[source_names[d]] = torch.mean(val[d, :, 3]).tolist()
+                            accu[source_names[d]] = torch.mean(val[d, :, 4]).tolist()
 
-                if args.algorithm in ['MLDG','MWN_MLDG']:
+                if args.algorithm in algorithms.METANET:
                     writer.add_scalars('inner loss info per domain',inloss, step)
                     writer.add_scalars('outer loss info per domain',outloss, step)
                     writer.add_scalars('accuracy info per domain',accu, step)
-                if args.algorithm in ['MWN_MLDG']:
+                if args.algorithm in algorithms.WEIGHTNET:
                     writer.add_scalars('meta loss info per domain',metloss, step)
                     writer.add_scalars('weight info per domain',weit, step)
                 continue
@@ -321,7 +314,7 @@ if __name__ == "__main__":
         f.write('done')
 
 
-    if args.algorithm in ['MWN_MLDG']:
+    if args.algorithm in algorithms.WEIGHTNET:
         import pandas as pd
         df = pd.DataFrame(data = loss_table_dom_cls,columns = ['domain','class','innerloss','outerloss','metaloss','weight','accuracy','step'])
         df.to_csv(os.path.join(args.output_dir,'lossinfo_per_domcls.csv'))

@@ -29,8 +29,21 @@ ALGORITHMS = [
     'VREx',
     'RSC',
     'MFM_MLDG',
-    'MWN_MLDG'
+    'MWN_MLDG',
+    'CMWN_MLDG'
 ]
+
+WEIGHTNET = [
+    'MWN_MLDG',
+    'CMWN_MLDG'
+]
+METANET = [
+    'MLDG',
+    'MWN_MLDG',
+    'CMWN_MLDG'
+
+]
+
 
 def get_algorithm_class(algorithm_name):
     """Return the algorithm class with the given name."""
@@ -1263,17 +1276,26 @@ class MWN_MLDG(ERM):
 
 
 
-class MWNet(torch.nn.Module):
-    def __init__(self, input, hidden1, output):
-        super(MWNet, self).__init__()
-        self.mlp = nn.Sequential(nn.Linear(input, hidden1),
-                      nn.ReLU(inplace=True),
-                      nn.Linear(hidden1, output))
+
+
+
+class CWNet(torch.nn.Module):
+    def __init__(self, input, hidden1, output,hidden2=None):
+        super(CWNet, self).__init__()
+        if hidden2 == None:
+            self.mlp = nn.Sequential(nn.Linear(input, hidden1),
+                          nn.ReLU(inplace=True),
+                          nn.Linear(hidden1, output))
+        else:
+            self.mlp = nn.Sequential(nn.Linear(input, hidden1),
+                          nn.ReLU(inplace=True),
+                          nn.Linear(hidden1, hidden2),
+                          nn.ReLU(inplace=True),
+                          nn.Linear(hidden2, output))
 
     def forward(self, x):
         out = self.mlp(x)
         return torch.sigmoid(out)
-
 
 class CMWN_MLDG(ERM):
     """
@@ -1288,11 +1310,16 @@ class CMWN_MLDG(ERM):
     def __init__(self, input_shape, num_classes, num_domains, hparams):
         super(CMWN_MLDG, self).__init__(input_shape, num_classes, num_domains,
                                    hparams)
-
         if hparams['clscond']:
-            self.weight_net = MWNet(1+num_classes+num_domains,hparams['hidden_neurons'],1).cuda()
+            mlp_input = 1 + num_classes + num_domains
         else:
-            self.weight_net = MWNet(1+num_domains,hparams['hidden_neurons'],1).cuda()
+            mlp_input = 1 + num_domains
+
+        if hparams['2hid'] !=None:
+            self.weight_net = CWNet(mlp_input, hparams['1hid'], 1,hidden2 = hparams['2hid']).cuda()
+        else:
+            self.weight_net = CWNet(mlp_input, hparams['1hid'], 1).cuda()
+
         self.optimMWN = torch.optim.Adam(
             self.weight_net.parameters(),
             lr=self.hparams["mod_lr"],
@@ -1325,6 +1352,15 @@ class CMWN_MLDG(ERM):
 
         return (chart, imgnum)
 
+    def acc_dom_cls(self,inner_net, x, y):
+        inner_net.eval()
+        with torch.no_grad():
+            correct_temp, total_temp = multi_acc(inner_net(x), y, self.num_classes)
+        inner_net.train()
+        correct_temp = torch.tensor(correct_temp).cuda().requires_grad_(False)
+        total_temp = torch.tensor(total_temp).cuda().requires_grad_(False)
+        return (correct_temp, total_temp)
+
     def update(self, minibatches,small_meta_loader):
         """
         Terms being computed:
@@ -1351,9 +1387,10 @@ class CMWN_MLDG(ERM):
                 p.grad.detach()
 
         # domain class innerloss, outloss, metaloss, weight
-        chart = torch.zeros(self.num_domains,self.num_classes,4).cuda().requires_grad_(False)
-        imgnum = torch.zeros(self.num_domains,self.num_classes,4).cuda().requires_grad_(False)
-
+        chart = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+        total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
 
         for (xi, yi, di), (xj, yj, dj) in random_pairs_of_minibatches_outputdom(minibatches):
 
@@ -1372,6 +1409,13 @@ class CMWN_MLDG(ERM):
             # clone-network on task "i"
             inner_net = copy.deepcopy(self.network)
 
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xi,yi)
+            correct_percls[di, :] += correct_temp
+            total_percls[di, :] += total_temp
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xj,yj)
+            correct_percls[dj, :] += correct_temp
+            total_percls[dj, :] += total_temp
+
             inner_opt = torch.optim.Adam(
                 inner_net.parameters(),
                 lr=self.hparams["lr"],
@@ -1379,13 +1423,21 @@ class CMWN_MLDG(ERM):
             )
             inner_opt.zero_grad()
 
+            clscond = F.one_hot(yi, num_classes=self.num_classes)
+            domcond = F.one_hot(torch.tensor(di).cuda(), num_classes=self.num_domains).unsqueeze(0).repeat(len(yi), 1)
             # meta weight net update
             with higher.innerloop_ctx(inner_net, inner_opt,
                 copy_initial_weights=False) as (inner_network, inner_optimizer):
 
                 li = F.cross_entropy(inner_network(xi), yi, reduction='none')
                 li = torch.reshape(li, (len(li), 1))
-                v_lambda = self.weight_net(li.data)  # calculate weight
+
+                if self.hparams['clscond']:
+                    weight_input = torch.cat((li,domcond,clscond),1)
+                    v_lambda = self.weight_net(weight_input.data)  # calculate weight
+                else:
+                    weight_input = torch.cat((li,domcond),1)
+                    v_lambda = self.weight_net(weight_input.data)  # calculate weight
 
                 weighted_loss = torch.mean(torch.mul(li,v_lambda))
 
@@ -1399,24 +1451,27 @@ class CMWN_MLDG(ERM):
                 meta_obj.backward()
                 self.optimMWN.step()
 
+            li =  F.cross_entropy(inner_net(xi), yi, reduction='none')
+            inloss = li.data
 
-            li = F.cross_entropy(inner_net(xi), yi, reduction='none')
             li = torch.reshape(li, (len(li), 1))
 
             with torch.no_grad():
-                v_lambda_new = self.weight_net(li.data)  # calculate weight
+                if self.hparams['clscond']:
+                    weight_input = torch.cat((li, domcond, clscond), 1)
+                    v_lambda_new = self.weight_net(weight_input.data)  # calculate weight
+                else:
+                    weight_input = torch.cat((li, domcond), 1)
+                    v_lambda_new = self.weight_net(weight_input.data)
+
 
             weit = v_lambda_new.data
 
-            inloss = torch.mul(li, v_lambda_new)
-            inner_obj = torch.mean(inloss)  # weighted loss
-
-            inloss = inloss.data
+            inner_obj = torch.mean(torch.mul(li, v_lambda_new))  # weighted loss
 
             inner_opt.zero_grad()
             inner_obj.backward()
             inner_opt.step()
-
 
             # The network has now accumulated gradients Gi
             # The clone-network has now parameters P - lr * Gi
@@ -1428,13 +1483,20 @@ class CMWN_MLDG(ERM):
             # `objective` is populated for reporting purposes
             objective += inner_obj.item()
 
+            clscond = F.one_hot(yj, num_classes=self.num_classes)
+            domcond = F.one_hot(torch.tensor(dj).cuda(), num_classes=self.num_domains).unsqueeze(0).repeat(len(yj), 1)
             if self.hparams['mod_in_outer']:
                 # modulating in outer update################
                 lj = F.cross_entropy(inner_net(xj), yj, reduction='none')
                 outloss = lj.data
                 lj = torch.reshape(lj, (len(lj), 1))
                 with torch.no_grad():
-                    v_lambda = self.weight_net(lj.data) # calculate weight
+                    if self.hparams['clscond']:
+                        weight_input = torch.cat((lj.data, domcond, clscond), 1)
+                        v_lambda = self.weight_net(weight_input.data)  # calculate weight
+                    else:
+                        weight_input = torch.cat((lj.data, domcond), 1)
+                        v_lambda = self.weight_net(weight_input.data)
 
                 loss_inner_j = torch.mean(torch.mul(lj,v_lambda))
             else:
@@ -1442,7 +1504,6 @@ class CMWN_MLDG(ERM):
                 lj = F.cross_entropy(inner_net(xj), yj,reduction='none')
                 outloss = lj.data
                 loss_inner_j = torch.mean(lj)
-
 
             grad_inner_j = autograd.grad(loss_inner_j, inner_net.parameters(),
                 allow_unused=True)
@@ -1466,6 +1527,9 @@ class CMWN_MLDG(ERM):
 
         imgnum[imgnum == 0] = 1
         chart = chart/imgnum
+
+        total_percls[total_percls==0] =1
+        chart[:,:,4]=correct_percls/total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
