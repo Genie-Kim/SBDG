@@ -128,7 +128,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams["mod_lr"] = (1e-3,1e-3)
         hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
         hparams['1hid'] = (25,100)
-        hparams['2hid'] = (8,100) # 50,4 or 25 8
+        hparams['2hid'] = (None,None) # 50,4 or 25 8
         hparams['clscond'] = (False,False)
         hparams['mldg_beta'] = (1., 1.)
         hparams['mod_in_outer'] = (True,True) # modulation in outer update

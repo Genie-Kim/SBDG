@@ -187,6 +187,7 @@ if __name__ == "__main__":
 
     loss_table_dom_cls = []
     info_chart = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
+    total_num = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
 
     for step in tqdm(range(start_step, n_steps)):
         step_start_time = time.time()
@@ -200,42 +201,49 @@ if __name__ == "__main__":
 
         for key, val in step_vals.items():
             if key == 'chart':
-                inloss={}
-                outloss={}
-                metloss={}
-                weit={}
-                accu={}
-                for d in range(algorithm.num_domains):
-                    for c in range(algorithm.num_classes):
-                        loss_table_dom_cls.append([source_names[d],class_names[c]] + val[d,c,:].tolist() + [step])
-                        if args.algorithm in algorithms.METANET:
-                            inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
-                            outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
-                            accu[source_names[d]] = torch.mean(val[d,:,2]).tolist()
-                        if args.algorithm in algorithms.WEIGHTNET:
-                            weit[source_names[d]] = torch.mean(val[d, :, 3]).tolist()
-                            accu[source_names[d]] = torch.mean(val[d, :, 4]).tolist()
-
-                if args.algorithm in algorithms.METANET:
-                    writer.add_scalars('inner loss info per domain',inloss, step)
-                    writer.add_scalars('outer loss info per domain',outloss, step)
-                    writer.add_scalars('accuracy info per domain',accu, step)
-                if args.algorithm in algorithms.WEIGHTNET:
-                    writer.add_scalars('meta loss info per domain',metloss, step)
-                    writer.add_scalars('weight info per domain',weit, step)
+                info_chart+=val[0]
+                total_num+=val[1]
                 continue
-
             checkpoint_vals[key].append(val)
             if key == 'loss':
                 writer.add_scalar('train loss', step_vals['loss'], step)
 
+
         if step % checkpoint_freq == 0:
+            if args.algorithm in algorithms.METANET:
+                inloss = {}
+                outloss = {}
+                metloss = {}
+                weit = {}
+                accu = {}
+                total_num[total_num==0]=1
+                info_chart=info_chart/total_num
+                for d in range(algorithm.num_domains):
+                    for c in range(algorithm.num_classes):
+                        loss_table_dom_cls.append([source_names[d], class_names[c]] + info_chart[d, c, :].tolist() + [step])
+                        inloss[source_names[d]] = torch.mean(info_chart[d, :, 0]).tolist()
+                        outloss[source_names[d]] = torch.mean(info_chart[d, :, 1]).tolist()
+                        accu[source_names[d]] = torch.mean(info_chart[d, :, 2]).tolist()
+                        if args.algorithm in algorithms.WEIGHTNET:
+                            weit[source_names[d]] = torch.mean(info_chart[d, :, 3]).tolist()
+                            accu[source_names[d]] = torch.mean(info_chart[d, :, 4]).tolist()
+                writer.add_scalars('inner loss info per domain', inloss, step)
+                writer.add_scalars('outer loss info per domain', outloss, step)
+                writer.add_scalars('accuracy info per domain', accu, step)
+                if args.algorithm in algorithms.WEIGHTNET:
+                    writer.add_scalars('meta loss info per domain', metloss, step)
+                    writer.add_scalars('weight info per domain', weit, step)
+                info_chart.zero_()
+                total_num.zero_()
+
             results = {
                 'step': step,
                 'epoch': step / steps_per_epoch,
             }
 
             for key, val in checkpoint_vals.items():
+                if key =='chart':
+                    continue
                 results[key] = np.mean(val)
 
             evals = zip(eval_loader_names, eval_loaders, eval_weights)
@@ -297,6 +305,8 @@ if __name__ == "__main__":
             algorithm_dict = algorithm.state_dict()
             start_step = step + 1
             checkpoint_vals = collections.defaultdict(lambda: [])
+
+            torch.cuda.empty_cache()
 
     if not args.skip_model_save:
         save_dict = {

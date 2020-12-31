@@ -522,13 +522,12 @@ class MLDG(ERM):
 
         self.optimizer.step()
 
-        imgnum[imgnum == 0] = 1
-        chart = chart/imgnum
+        chart[:,:,2] = correct_percls
+        imgnum[:,:,2] = total_percls # accuracy per batch.
 
-        total_percls[total_percls == 0] = 1
-        chart[:, :, 2] = correct_percls / total_percls  # accuracy per batch.
+        # torch.cuda.empty_cache()
 
-        return {'loss': objective,'chart' : chart}
+        return {'loss': objective,'chart':(chart,imgnum)}
 
     # This commented "update" method back-propagates through the gradients of
     # the inner update, as suggested in the original MAML paper.  However, this
@@ -1264,15 +1263,12 @@ class MWN_MLDG(ERM):
 
         self.optimizer.step()
 
-        imgnum[imgnum == 0] = 1
-        chart = chart/imgnum
-
-        total_percls[total_percls==0] =1
-        chart[:,:,4]=correct_percls/total_percls # accuracy per batch.
+        chart[:,:,4] = correct_percls
+        imgnum[:,:,4] = total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
-        return {'loss': objective,'chart':chart}
+        return {'loss': objective,'chart':(chart,imgnum)}
 
 
 
@@ -1525,12 +1521,9 @@ class CMWN_MLDG(ERM):
 
         self.optimizer.step()
 
-        imgnum[imgnum == 0] = 1
-        chart = chart/imgnum
-
-        total_percls[total_percls==0] =1
-        chart[:,:,4]=correct_percls/total_percls # accuracy per batch.
+        chart[:,:,4] = correct_percls
+        imgnum[:,:,4] = total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
-        return {'loss': objective,'chart':chart}
+        return {'loss': objective,'chart':(chart,imgnum)}
