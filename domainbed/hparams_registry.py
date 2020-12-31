@@ -113,10 +113,10 @@ def _hparams(algorithm, dataset, random_state):
 
     elif algorithm == "MWN_MLDG":
         hparams["mod_lr"] = (1e-3,1e-3)
-        hparams['num_smallmetaset'] = (7,7) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
+        hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
         hparams['hidden_neurons'] = (100,100)
         hparams['mldg_beta'] = (1., 1.)
-        hparams['mod_in_outer'] = (True,False) # modulation in outer update
+        hparams['mod_in_outer'] = (True,True) # modulation in outer update
         hparams['mixdom_metaset'] = (False,True)
         # final batch 개수는 hparams['num_smallmetaset']*class 개수보다 작아야한다.
         if hparams['mixdom_metaset'][0]: # if mixing

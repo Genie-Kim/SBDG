@@ -11,6 +11,7 @@ import numpy as np
 from domainbed import networks
 from domainbed.lib.misc import random_pairs_of_minibatches,random_pairs_of_minibatches_outputdom
 import higher
+from domainbed.lib.misc import *
 
 ALGORITHMS = [
     'ERM',
@@ -399,6 +400,15 @@ class MLDG(ERM):
         self.num_domains = num_domains
         self.checknan = lambda x: 0 if torch.isnan(x) else x
 
+    def acc_dom_cls(self,inner_net, x, y):
+        inner_net.eval()
+        with torch.no_grad():
+            correct_temp, total_temp = multi_acc(inner_net(x), y, self.num_classes)
+        inner_net.train()
+        correct_temp = torch.tensor(correct_temp).cuda().requires_grad_(False)
+        total_temp = torch.tensor(total_temp).cuda().requires_grad_(False)
+        return (correct_temp, total_temp)
+
     def mkchart(self,chart,imgnum,di,dj,yi,yj,inloss,outloss):
         with torch.no_grad():
             for cls in range(self.num_classes):
@@ -434,8 +444,10 @@ class MLDG(ERM):
                 p.grad = torch.zeros_like(p)
 
         # domain class innerloss, outloss
-        chart = torch.zeros(self.num_domains,self.num_classes,2).cuda().requires_grad_(False)
-        imgnum = torch.zeros(self.num_domains,self.num_classes,2).cuda().requires_grad_(False)
+        chart = torch.zeros(self.num_domains,self.num_classes,3).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,3).cuda().requires_grad_(False)
+        correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+        total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
 
 
         for (xi, yi,di), (xj, yj,dj) in random_pairs_of_minibatches_outputdom(minibatches):
@@ -447,6 +459,13 @@ class MLDG(ERM):
                 lr=self.hparams["lr"],
                 weight_decay=self.hparams['weight_decay']
             )
+
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xi,yi)
+            correct_percls[di, :] += correct_temp
+            total_percls[di, :] += total_temp
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xj,yj)
+            correct_percls[dj, :] += correct_temp
+            total_percls[dj, :] += total_temp
 
             inner_obj = F.cross_entropy(inner_net(xi), yi,reduction='none')
 
@@ -492,6 +511,9 @@ class MLDG(ERM):
 
         imgnum[imgnum == 0] = 1
         chart = chart/imgnum
+
+        total_percls[total_percls == 0] = 1
+        chart[:, :, 2] = correct_percls / total_percls  # accuracy per batch.
 
         return {'loss': objective,'chart' : chart}
 
@@ -1045,6 +1067,232 @@ class MWN_MLDG(ERM):
                                    hparams)
 
         self.weight_net = MWNet(1,hparams['hidden_neurons'],1).cuda()
+        self.optimMWN = torch.optim.Adam(
+            self.weight_net.parameters(),
+            lr=self.hparams["mod_lr"],
+            weight_decay=1e-4
+        )
+        self.num_classes = num_classes
+        self.num_domains = num_domains
+        self.checknan = lambda x: 0 if torch.isnan(x) else x
+
+    def mkchart(self, chart, imgnum, di, dj,ds, yi, yj,ys, inloss, outloss,metaloss,weit):
+        with torch.no_grad():
+            for cls in range(self.num_classes):
+                chart[di, cls, 0] += self.checknan(torch.mean(inloss[yi == cls]))
+                chart[dj, cls, 1] += self.checknan(torch.mean(outloss[yj == cls]))
+
+                chart[di, cls, 3] += self.checknan(torch.mean(weit[yi == cls]))
+
+
+                imgnum[di, cls, 0] += len(inloss[yi == cls])
+                imgnum[dj, cls, 1] += len(outloss[yj == cls])
+
+                imgnum[di, cls, 3] += len(weit[yi == cls])
+
+                ss = ds.data.cpu().int().tolist()
+                yy = ys.data.cpu().int().tolist()
+                for i,(s,y) in enumerate(zip(ss,yy)):
+                    chart[s, y, 2] += self.checknan(torch.mean(metaloss[i]))
+                    imgnum[s, y, 2] += 1
+
+
+        return (chart, imgnum)
+
+    def acc_dom_cls(self,inner_net, x, y):
+        inner_net.eval()
+        with torch.no_grad():
+            correct_temp, total_temp = multi_acc(inner_net(x), y, self.num_classes)
+        inner_net.train()
+        correct_temp = torch.tensor(correct_temp).cuda().requires_grad_(False)
+        total_temp = torch.tensor(total_temp).cuda().requires_grad_(False)
+        return (correct_temp, total_temp)
+
+    def update(self, minibatches,small_meta_loader):
+        """
+        Terms being computed:
+            * Li = Loss(xi, yi, params)
+            * Gi = Grad(Li, params)
+
+            * Lj = Loss(xj, yj, Optimizer(params, grad(Li, params)))
+            * Gj = Grad(Lj, params)
+
+            * params = Optimizer(params, Grad(Li + beta * Lj, params))
+            *        = Optimizer(params, Gi + beta * Gj)
+
+        That is, when calling .step(), we want grads to be Gi + beta * Gj
+
+        For computational efficiency, we do not compute second derivatives.
+        """
+        num_mb = len(minibatches)
+        objective = 0
+        self.optimMWN.zero_grad()
+        self.optimizer.zero_grad()
+        for p in self.network.parameters():
+            if p.grad is None:
+                p.grad = torch.zeros_like(p)
+                p.grad.detach()
+
+        # domain class innerloss, outloss, metaloss, weight
+        chart = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+        total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+
+        for (xi, yi, di), (xj, yj, dj) in random_pairs_of_minibatches_outputdom(minibatches):
+
+            # prepare mini batch from meta dataset
+            small_meta_batch = [(x.to("cuda"), y.to("cuda"))
+                                  for x, y in next(zip(*small_meta_loader))]
+            if self.hparams['mixdom_metaset']: # small meta dataset. domain mixing
+                xs = torch.cat([x for x, y in small_meta_batch])
+                ys = torch.cat([y for x, y in small_meta_batch])
+                ds = torch.cat([torch.Tensor([i for k in range(len(x[1]))]).cuda() for i,x in enumerate(small_meta_batch)])
+            else: # small meta dataset. not domain mixing
+                xs = small_meta_batch[di][0]
+                ys = small_meta_batch[di][1]
+                ds = torch.Tensor([di for k in range(len(ys))]).cuda()
+
+            # clone-network on task "i"
+            inner_net = copy.deepcopy(self.network)
+
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xi,yi)
+            correct_percls[di, :] += correct_temp
+            total_percls[di, :] += total_temp
+            correct_temp, total_temp = self.acc_dom_cls(inner_net,xj,yj)
+            correct_percls[dj, :] += correct_temp
+            total_percls[dj, :] += total_temp
+
+            inner_opt = torch.optim.Adam(
+                inner_net.parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt.zero_grad()
+
+            # meta weight net update
+            with higher.innerloop_ctx(inner_net, inner_opt,
+                copy_initial_weights=False) as (inner_network, inner_optimizer):
+
+                li = F.cross_entropy(inner_network(xi), yi, reduction='none')
+                li = torch.reshape(li, (len(li), 1))
+                v_lambda = self.weight_net(li.data)  # calculate weight
+
+                weighted_loss = torch.mean(torch.mul(li,v_lambda))
+
+                inner_optimizer.step(weighted_loss) # first update inner network
+
+                self.optimMWN.zero_grad()
+                meta_obj = F.cross_entropy(inner_network(xs), ys, reduction='none')
+
+                metaloss = meta_obj.data
+                meta_obj = torch.mean(meta_obj)
+                meta_obj.backward()
+                self.optimMWN.step()
+
+            li =  F.cross_entropy(inner_net(xi), yi, reduction='none')
+            inloss = li.data
+
+            li = torch.reshape(li, (len(li), 1))
+
+            with torch.no_grad():
+                v_lambda_new = self.weight_net(li.data)  # calculate weight
+
+            weit = v_lambda_new.data
+
+            inner_obj = torch.mean(torch.mul(li, v_lambda_new))  # weighted loss
+
+            inner_opt.zero_grad()
+            inner_obj.backward()
+            inner_opt.step()
+
+            # The network has now accumulated gradients Gi
+            # The clone-network has now parameters P - lr * Gi
+            for p_tgt, p_src in zip(self.network.parameters(),
+                                    inner_net.parameters()):
+                if p_src.grad is not None:
+                    p_tgt.grad.data.add_(p_src.grad.data / num_mb)
+
+            # `objective` is populated for reporting purposes
+            objective += inner_obj.item()
+
+            if self.hparams['mod_in_outer']:
+                # modulating in outer update################
+                lj = F.cross_entropy(inner_net(xj), yj, reduction='none')
+                outloss = lj.data
+                lj = torch.reshape(lj, (len(lj), 1))
+                with torch.no_grad():
+                    v_lambda = self.weight_net(lj.data) # calculate weight
+
+                loss_inner_j = torch.mean(torch.mul(lj,v_lambda))
+            else:
+                # this computes Gj on the clone-network
+                lj = F.cross_entropy(inner_net(xj), yj,reduction='none')
+                outloss = lj.data
+                loss_inner_j = torch.mean(lj)
+
+            grad_inner_j = autograd.grad(loss_inner_j, inner_net.parameters(),
+                allow_unused=True)
+
+            # `objective` is populated for reporting purposes
+            objective += (self.hparams['mldg_beta'] * loss_inner_j).item()
+
+            for p, g_j in zip(self.network.parameters(), grad_inner_j):
+                if g_j is not None:
+                    p.grad.data.add_(
+                        self.hparams['mldg_beta'] * g_j.data / num_mb)
+
+            # The network has now accumulated gradients Gi + beta * Gj
+            # Repeat for all train-test splits, do .step()
+
+            chart, imgnum = self.mkchart(chart, imgnum, di, dj, ds, yi, yj, ys, inloss, outloss, metaloss, weit)
+
+        objective /= len(minibatches)
+
+        self.optimizer.step()
+
+        imgnum[imgnum == 0] = 1
+        chart = chart/imgnum
+
+        total_percls[total_percls==0] =1
+        chart[:,:,4]=correct_percls/total_percls # accuracy per batch.
+
+        # torch.cuda.empty_cache()
+
+        return {'loss': objective,'chart':chart}
+
+
+
+class MWNet(torch.nn.Module):
+    def __init__(self, input, hidden1, output):
+        super(MWNet, self).__init__()
+        self.mlp = nn.Sequential(nn.Linear(input, hidden1),
+                      nn.ReLU(inplace=True),
+                      nn.Linear(hidden1, output))
+
+    def forward(self, x):
+        out = self.mlp(x)
+        return torch.sigmoid(out)
+
+
+class CMWN_MLDG(ERM):
+    """
+    Model-Agnostic Meta-Learning
+    Algorithm 1 / Equation (3) from: https://arxiv.org/pdf/1710.03463.pdf
+    Related: https://arxiv.org/pdf/1703.03400.pdf
+    Related: https://arxiv.org/pdf/1910.13580.pdf
+
+    TODO: update() has at least one bug, possibly more. Disabling this whole
+    algorithm until it gets figured out.
+    """
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(CMWN_MLDG, self).__init__(input_shape, num_classes, num_domains,
+                                   hparams)
+
+        if hparams['clscond']:
+            self.weight_net = MWNet(1+num_classes+num_domains,hparams['hidden_neurons'],1).cuda()
+        else:
+            self.weight_net = MWNet(1+num_domains,hparams['hidden_neurons'],1).cuda()
         self.optimMWN = torch.optim.Adam(
             self.weight_net.parameters(),
             lr=self.hparams["mod_lr"],

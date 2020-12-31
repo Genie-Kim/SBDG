@@ -119,6 +119,7 @@ if __name__ == "__main__":
             misc.seed_hash(args.trial_seed, env_i))
         if args.algorithm in ['MWN_MLDG','MFM_MLDG']:
             # in_ 에서 class별 hparams['num_smallmetaset']개수만큼 뽑아서 balanced small meta set만든다.
+            print('make small meta set:',env_i)
             smallmetaset_perdom, in_ = misc.split_smallmetaset(env,in_,hparams['num_smallmetaset'])
             meta_splits.append(smallmetaset_perdom)
         if hparams['class_balanced']:
@@ -207,6 +208,7 @@ if __name__ == "__main__":
                 outloss={}
                 metloss={}
                 weit={}
+                accu={}
                 for d in range(algorithm.num_domains):
                     for c in range(algorithm.num_classes):
                         loss_table_dom_cls.append([source_names[d],class_names[c]] + val[d,c,:].tolist() + [step])
@@ -215,12 +217,16 @@ if __name__ == "__main__":
                             outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
                             metloss[source_names[d]] = torch.mean(val[d,:,2]).tolist()
                             weit[source_names[d]] = torch.mean(val[d,:,3]).tolist()
+                            accu[source_names[d]] = torch.mean(val[d,:,4]).tolist()
                         elif args.algorithm in ['MLDG']:
                             inloss[source_names[d]] = torch.mean(val[d,:,0]).tolist()
                             outloss[source_names[d]] = torch.mean(val[d,:,1]).tolist()
+                            accu[source_names[d]] = torch.mean(val[d,:,2]).tolist()
 
-                writer.add_scalars('inner loss info per domain',inloss, step)
-                writer.add_scalars('outer loss info per domain',outloss, step)
+                if args.algorithm in ['MLDG','MWN_MLDG']:
+                    writer.add_scalars('inner loss info per domain',inloss, step)
+                    writer.add_scalars('outer loss info per domain',outloss, step)
+                    writer.add_scalars('accuracy info per domain',accu, step)
                 if args.algorithm in ['MWN_MLDG']:
                     writer.add_scalars('meta loss info per domain',metloss, step)
                     writer.add_scalars('weight info per domain',weit, step)
@@ -317,12 +323,12 @@ if __name__ == "__main__":
 
     if args.algorithm in ['MWN_MLDG']:
         import pandas as pd
-        df = pd.DataFrame(data = loss_table_dom_cls,columns = ['domain','class','innerloss','outerloss','metaloss','weight','step'])
+        df = pd.DataFrame(data = loss_table_dom_cls,columns = ['domain','class','innerloss','outerloss','metaloss','weight','accuracy','step'])
         df.to_csv(os.path.join(args.output_dir,'lossinfo_per_domcls.csv'))
     elif args.algorithm in ['MLDG']:
         import pandas as pd
         df = pd.DataFrame(data=loss_table_dom_cls,
-                          columns=['domain', 'class', 'innerloss', 'outerloss', 'step'])
+                          columns=['domain', 'class', 'innerloss', 'outerloss','accuracy','step'])
         df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
 
 

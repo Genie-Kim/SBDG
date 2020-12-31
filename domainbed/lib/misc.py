@@ -91,16 +91,18 @@ def split_dataset(dataset, n, seed=0):
 
 def split_smallmetaset(base_set, input_set, num_per_cls):
     meta_keys = []
-    remain_keys = []
     n_classes = len(base_set.classes)
-    for k in range(n_classes):
-        temp_keys = []
-        for x in input_set.keys:
-            if len(temp_keys)>=num_per_cls:
-                break
-            if base_set[x][1] == k:
-                temp_keys.append(x)
-        meta_keys += temp_keys
+
+    cls_keys = {c:[]for c in range(n_classes)}
+    for x in tqdm.tqdm(input_set.keys):
+        cls = base_set[x][1]
+        if len(cls_keys[cls])>=num_per_cls:
+            continue
+        else:
+            cls_keys[cls].append(x)
+    for _,v in cls_keys.items():
+        meta_keys += v
+
     remain_keys = [x for x in input_set.keys if x not in meta_keys]
     return _SplitDataset(base_set,meta_keys), _SplitDataset(base_set,remain_keys)
 
