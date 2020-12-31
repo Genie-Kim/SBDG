@@ -127,18 +127,18 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
 def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     data_dir, hparams,checkpoint_freq):
 
-    #case1
-    hlist1 = ['"mod_in_outer":"True"','"mod_in_outer":"False"']
-    hlist2 = ['"mixdom_metaset":"True"','"mixdom_metaset":"False"']
-    hparam_list = list(product(hlist1, hlist2))
+    # #case1
+    # hlist1 = ['"mod_in_outer":"True"','"mod_in_outer":"False"']
+    # hlist2 = ['"mixdom_metaset":"True"','"mixdom_metaset":"False"']
+    # hparam_list = list(product(hlist1, hlist2))
 
     # #case2
     # hlist1 = ['"mod_lr":1e-2','"mod_lr":1e-3','"mod_lr":1e-4']
     # hlist2 = ['"hidden_neurons":100','"hidden_neurons":200','"hidden_neurons":300']
     # hparam_list = list(product(hlist1, hlist2))
     #
-    # #case3
-    # hparam_list = ['"num_smallmetaset":6', '"num_smallmetaset":12', '"num_smallmetaset":18','"num_smallmetaset":24','"num_smallmetaset":30']
+    #case3
+    hparam_list = ['"num_smallmetaset":6', '"num_smallmetaset":12', '"num_smallmetaset":18','"num_smallmetaset":24','"num_smallmetaset":30']
 
 
 

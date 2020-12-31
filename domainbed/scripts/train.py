@@ -176,7 +176,13 @@ if __name__ == "__main__":
 
     last_results_keys = None
 
-    writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
+
+    if args.hparams:
+        hyper_tuning = json.loads(args.hparams)
+        tb_out = ''.join(['('+str(k)+'_'+str(v)for k,v in hyper_tuning.items()])
+        writer = SummaryWriter(os.path.join(args.output_dir, tb_out))
+    else:
+        writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
 
     # if args.algorithms in ['MWN_MLDG']:
     #     loss_table_dom_cls = torch.zeros(algorithm.num_domains,algorithm.num_classes,4).cuda()

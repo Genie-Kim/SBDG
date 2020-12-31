@@ -22,6 +22,7 @@ from domainbed.lib import misc
 from domainbed import model_selection
 from domainbed.lib.query import Q
 import warnings
+import re
 
 def format_mean(data, latex):
     """Given a list of datapoints, return a string describing their mean and
@@ -156,7 +157,7 @@ def print_results_tables(records, selection_method, latex):
     print_table(table, header_text, alg_names, col_labels, colwidth=25,
         latex=latex)
 
-def load_records(path):
+def load_records(path,htuning):
     records = []
     for i, subdir in tqdm.tqdm(list(enumerate(os.listdir(path))),
                                ncols=80,
@@ -165,7 +166,16 @@ def load_records(path):
         try:
             with open(results_path, "r") as f:
                 for line in f:
-                    records.append(json.loads(line[:-1]))
+                    if htuning:
+                        line = json.loads(line[:-1])
+                        hp = line['args']['hparams']
+                        hp = json.loads(hp)
+                        hp_names = []
+                        for k, v in hp.items():
+                            hp_names.append(k[:1] + str(v))
+                        hp_names = ''.join(hp_names)
+                        line['args']['algorithm'] += '_' + hp_names
+                    records.append(line)
         except IOError:
             pass
 
@@ -178,13 +188,14 @@ if __name__ == "__main__":
         description="Domain generalization testbed")
     parser.add_argument("--input_dir", type=str, default="")
     parser.add_argument("--latex", action="store_true")
+    parser.add_argument("--htuning", action="store_true")
     args = parser.parse_args()
 
     results_file = "results.tex" if args.latex else "results.txt"
 
     sys.stdout = misc.Tee(os.path.join(args.input_dir, results_file), "w")
 
-    records = load_records(args.input_dir)
+    records = load_records(args.input_dir,args.htuning)
    
     if args.latex:
         print("\\documentclass{article}")
@@ -206,8 +217,8 @@ if __name__ == "__main__":
         if args.latex:
             print()
             print("\\subsection{{Model selection: {}}}".format(
-                selection_method.name)) 
-        print_results_tables(records, selection_method, args.latex)
+                selection_method.name))
+            print_results_tables(records, selection_method, args.latex)
 
     if args.latex:
         print("\\end{document}")
