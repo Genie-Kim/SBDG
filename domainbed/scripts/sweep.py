@@ -24,6 +24,8 @@ from domainbed import algorithms
 from domainbed.lib import misc
 from domainbed import command_launchers
 
+from itertools import product
+
 import tqdm
 import shlex
 
@@ -101,8 +103,7 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
             for algorithm in algorithms:
                 # all_test_envs = all_test_env_combinations(
                 #     datasets.num_environments(dataset))
-                # all_test_envs = [[x] for x in range(datasets.num_environments(dataset))] # for only one test envs
-                all_test_envs = [3] # for hiper parameter search(test 1 dom)
+                all_test_envs = [[x] for x in range(datasets.num_environments(dataset))] # for only one test envs
                 for test_envs in all_test_envs:
                     for hparams_seed in range(n_hparams):
                         train_args = {}
@@ -120,6 +121,59 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
                             train_args['checkpoint_freq'] = checkpoint_freq
                         if hparams is not None:
                             train_args['hparams'] = hparams
+                        args_list.append(train_args)
+    return args_list
+
+def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
+    data_dir, hparams,checkpoint_freq):
+
+    #case1
+    hlist1 = ['"mod_in_outer":"True"','"mod_in_outer":"False"']
+    hlist2 = ['"mixdom_metaset":"True"','"mixdom_metaset":"False"']
+    hparam_list = list(product(hlist1, hlist2))
+
+    # #case2
+    # hlist1 = ['"mod_lr":1e-2','"mod_lr":1e-3','"mod_lr":1e-4']
+    # hlist2 = ['"hidden_neurons":100','"hidden_neurons":200','"hidden_neurons":300']
+    # hparam_list = list(product(hlist1, hlist2))
+    #
+    # #case3
+    # hparam_list = ['"num_smallmetaset":6', '"num_smallmetaset":12', '"num_smallmetaset":18','"num_smallmetaset":24','"num_smallmetaset":30']
+
+
+
+    print('parameter searching, total # --> ',len(hparam_list))
+
+    args_list = []
+    for trial_seed in range(n_trials):
+        for dataset in dataset_names:
+            for algorithm in algorithms:
+                # all_test_envs = all_test_env_combinations(
+                #     datasets.num_environments(dataset))
+                # all_test_envs = [[x] for x in range(datasets.num_environments(dataset))] # for only one test envs
+                all_test_envs = [3] # for hiper parameter search(test 1 dom)
+                for test_envs in all_test_envs:
+                    for hparams in hparam_list:
+                        if type(hparams)==str:
+                            hparams = '{'+hparams+'}'
+                        else:
+                            hparams = '{'+','.join(hparams)+'}'
+
+                        hparams_seed = 0
+                        train_args = {}
+                        train_args['dataset'] = dataset
+                        train_args['algorithm'] = algorithm
+                        train_args['test_envs'] = test_envs
+                        train_args['hparams_seed'] = hparams_seed
+                        train_args['data_dir'] = data_dir
+                        train_args['trial_seed'] = trial_seed
+                        train_args['seed'] = misc.seed_hash(dataset,
+                            algorithm, test_envs, hparams_seed, trial_seed)
+                        if steps is not None:
+                            train_args['steps'] = steps
+                        if checkpoint_freq is not None:
+                            train_args['checkpoint_freq'] = checkpoint_freq
+                        train_args['hparams'] = hparams
                         args_list.append(train_args)
     return args_list
 
@@ -147,18 +201,31 @@ if __name__ == "__main__":
     parser.add_argument('--steps', type=int, default=None)
     parser.add_argument('--hparams', type=str, default=None)
     parser.add_argument('--skip_confirmation', action='store_true')
+    parser.add_argument('--hypert', action='store_true')
     args = parser.parse_args()
 
-    args_list = make_args_list(
-        n_trials=args.n_trials,
-        dataset_names=args.datasets,
-        algorithms=args.algorithms,
-        n_hparams=args.n_hparams,
-        steps=args.steps,
-        data_dir=args.data_dir,
-        hparams=args.hparams,
-        checkpoint_freq = args.checkpoint_freq
-    )
+    if not args.hypert:
+        args_list = make_args_list(
+            n_trials=args.n_trials,
+            dataset_names=args.datasets,
+            algorithms=args.algorithms,
+            n_hparams=args.n_hparams,
+            steps=args.steps,
+            data_dir=args.data_dir,
+            hparams=args.hparams,
+            checkpoint_freq = args.checkpoint_freq
+        )
+    else:
+        args_list = make_args_list_forht(
+            n_trials=args.n_trials,
+            dataset_names=args.datasets,
+            algorithms=args.algorithms,
+            n_hparams=args.n_hparams,
+            steps=args.steps,
+            data_dir=args.data_dir,
+            hparams=args.hparams,
+            checkpoint_freq=args.checkpoint_freq
+        )
 
     jobs = [Job(train_args, args.output_dir) for train_args in args_list]
 

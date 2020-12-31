@@ -81,6 +81,10 @@ if __name__ == "__main__":
 
     print('HParams:')
     for k, v in sorted(hparams.items()):
+        if v == 'True': # for hyper parameter search on sweep.py
+            hparams[k] = True
+        elif v=='False':
+            hparams[k] = False
         print('\t{}: {}'.format(k, v))
 
     random.seed(args.seed)
