@@ -127,12 +127,12 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
 def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     data_dir, hparams,checkpoint_freq):
 
-    #case1
-    hlist1 = ['"1hid":50','"1hid":"25"']
-    hlist2 = ['"2hid":"8"','"2hid":"4"']
-    hlist3 = ['"clscond":True', '"clscond":False']
-    hlist4 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
-    hparam_list = list(product(hlist1, hlist2,hlist3,hlist4))
+    # #case1
+    # hlist1 = ['"1hid":50','"1hid":25']
+    # hlist2 = ['"2hid":8','"2hid":4']
+    # hlist3 = ['"clscond":"True"', '"clscond":"False"']
+    # hlist4 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
+    # hparam_list = list(product(hlist1, hlist2,hlist3,hlist4))
 
     # #case2
     # hlist1 = ['"mod_lr":1e-2','"mod_lr":1e-3','"mod_lr":1e-4']
@@ -141,7 +141,7 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
 
     #case3
     hlist1 = ['"1hid":100','"1hid":200','"1hid":300']
-    hlist2 = ['"clscond":True','"clscond":False']
+    hlist2 = ['"clscond":"True"','"clscond":"False"']
     hlist3 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
     hparam_list = list(product(hlist1, hlist2,hlist3))
 
