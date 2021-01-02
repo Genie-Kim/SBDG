@@ -134,16 +134,16 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     # hlist4 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
     # hparam_list = list(product(hlist1, hlist2,hlist3,hlist4))
 
-    # #case2
-    # hlist1 = ['"mod_lr":1e-2','"mod_lr":1e-3','"mod_lr":1e-4']
-    # hlist2 = ['"hidden_neurons":100','"hidden_neurons":200','"hidden_neurons":300']
-    # hparam_list = list(product(hlist1, hlist2))
+    #case2
+    hlist1 = ['"mod_lr":1e-4','"mod_lr":1e-5','"mod_lr":5e-6']
+    hlist2 = ['"hidden_neurons":100','"hidden_neurons":200','"hidden_neurons":200']
+    hparam_list = list(product(hlist1, hlist2))
 
-    #case3
-    hlist1 = ['"1hid":100','"1hid":200','"1hid":300']
-    hlist2 = ['"clscond":"True"','"clscond":"False"']
-    hlist3 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
-    hparam_list = list(product(hlist1, hlist2,hlist3))
+    # #case3
+    # hlist1 = ['"1hid":100','"1hid":200','"1hid":300']
+    # hlist2 = ['"clscond":"True"','"clscond":"False"']
+    # hlist3 = ['"mod_lr":1e-2', '"mod_lr":1e-3', '"mod_lr":1e-4']
+    # hparam_list = list(product(hlist1, hlist2,hlist3))
 
 
     print('parameter searching, total # --> ',len(hparam_list))

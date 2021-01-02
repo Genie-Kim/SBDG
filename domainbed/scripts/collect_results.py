@@ -174,8 +174,10 @@ def load_records(path,htuning):
                         for k, v in hp.items():
                             hp_names.append(k[:1] + str(v))
                         hp_names = ''.join(hp_names)
-                        line['args']['algorithm'] += '_' + hp_names
-                    records.append(line)
+                        line['args']['algorithm'] = '_' + hp_names
+                        records.append(line)
+                    else:
+                        records.append(json.loads(line[:-1]))
         except IOError:
             pass
 

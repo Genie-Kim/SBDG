@@ -117,7 +117,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['hidden_neurons'] = (100,100)
         hparams['mldg_beta'] = (1., 1.)
         hparams['mod_in_outer'] = (True,True) # modulation in outer update
-        hparams['mixdom_metaset'] = (False,True)
+        hparams['mixdom_metaset'] = (True,True)
         # final batch 개수는 hparams['num_smallmetaset']*class 개수보다 작아야한다.
         if hparams['mixdom_metaset'][0]: # if mixing
             hparams['small_batch'] = (9,9) # final batch number = x*(도메인개수-1) = else문의 개수와 같아야함.,
