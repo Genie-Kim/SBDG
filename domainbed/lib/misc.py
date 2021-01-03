@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from shutil import copyfile
+import random
 
 import numpy as np
 import torch
@@ -101,6 +102,9 @@ def split_smallmetaset(base_set, input_set, num_per_cls):
         else:
             cls_keys[cls].append(x)
     for _,v in cls_keys.items():
+        if len(v) < num_per_cls:
+            remainnum = num_per_cls - len(v)
+            v = v+random.choices(v,k=remainnum) # random over sampling for meta small set
         meta_keys += v
 
     remain_keys = [x for x in input_set.keys if x not in meta_keys]
