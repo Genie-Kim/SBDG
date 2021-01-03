@@ -24,6 +24,7 @@ from domainbed.lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 import re
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+import pandas as pd
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
@@ -117,11 +118,12 @@ if __name__ == "__main__":
         out, in_ = misc.split_dataset(env,
             int(len(env)*args.holdout_fraction),
             misc.seed_hash(args.trial_seed, env_i))
-        if args.algorithm in algorithms.WEIGHTNET:
+        if 'num_smallmetaset' in hparams:
             # in_ 에서 class별 hparams['num_smallmetaset']개수만큼 뽑아서 balanced small meta set만든다.
             print('make small meta set:',env_i)
             smallmetaset_perdom, in_ = misc.split_smallmetaset(env,in_,hparams['num_smallmetaset'])
             meta_splits.append(smallmetaset_perdom)
+
         if hparams['class_balanced']:
             in_weights = misc.make_weights_for_balanced_classes(in_)
             out_weights = misc.make_weights_for_balanced_classes(out)
@@ -137,7 +139,7 @@ if __name__ == "__main__":
         num_workers=dataset.N_WORKERS)
         for i, (env, env_weights) in enumerate(in_splits)
         if i not in args.test_envs]
-    if args.algorithm in algorithms.WEIGHTNET:
+    if 'num_smallmetaset' in hparams:
         small_meta_loader = [InfiniteDataLoader(
             dataset=env,
             weights=None,
@@ -185,19 +187,17 @@ if __name__ == "__main__":
     else:
         writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
 
-    loss_table_dom_cls = []
-    if args.algorithm in algorithms.WEIGHTNET:
-        info_chart = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
-        total_num = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
-    elif args.algorithm in algorithms.METANET:
-        info_chart = torch.zeros(len(source_names),dataset.num_classes,3).cuda().requires_grad_(False)
-        total_num = torch.zeros(len(source_names),dataset.num_classes,3).cuda().requires_grad_(False)
+
+    if 'inforecord' in hparams:
+        loss_table_dom_cls = []
+        info_chart = torch.zeros(len(source_names),dataset.num_classes,hparams['inforecord']).cuda().requires_grad_(False)
+        total_num = torch.zeros(len(source_names),dataset.num_classes,hparams['inforecord']).cuda().requires_grad_(False)
 
     for step in tqdm(range(start_step, n_steps)):
         step_start_time = time.time()
         minibatches_device = [(x.to(device), y.to(device))
             for x,y in next(train_minibatches_iterator)]
-        if args.algorithm in algorithms.WEIGHTNET:
+        if 'num_smallmetaset' in hparams:
             step_vals = algorithm.update(minibatches_device,small_meta_loader)
         else:
             step_vals = algorithm.update(minibatches_device)
@@ -214,29 +214,33 @@ if __name__ == "__main__":
 
 
         if step % checkpoint_freq == 0:
-            if args.algorithm in algorithms.METANET:
-                inloss = {}
-                outloss = {}
-                metloss = {}
-                weit = {}
-                accu = {}
+            if 'inforecord' in hparams:
+                info_dict = {k:{} for k in range(hparams['inforecord'])}
                 total_num[total_num==0]=1
                 info_chart=info_chart/total_num
                 for d in range(algorithm.num_domains):
                     for c in range(algorithm.num_classes):
                         loss_table_dom_cls.append([source_names[d], class_names[c]] + info_chart[d, c, :].tolist() + [step])
-                        inloss[source_names[d]] = torch.mean(info_chart[d, :, 0]).tolist()
-                        outloss[source_names[d]] = torch.mean(info_chart[d, :, 1]).tolist()
-                        accu[source_names[d]] = torch.mean(info_chart[d, :, 2]).tolist()
-                        if args.algorithm in algorithms.WEIGHTNET:
-                            weit[source_names[d]] = torch.mean(info_chart[d, :, 3]).tolist()
-                            accu[source_names[d]] = torch.mean(info_chart[d, :, 4]).tolist()
-                writer.add_scalars('inner loss info per domain', inloss, step)
-                writer.add_scalars('outer loss info per domain', outloss, step)
-                writer.add_scalars('accuracy info per domain', accu, step)
-                if args.algorithm in algorithms.WEIGHTNET:
-                    writer.add_scalars('meta loss info per domain', metloss, step)
-                    writer.add_scalars('weight info per domain', weit, step)
+                        for k in info_dict.keys():
+                            info_dict[k][source_names[d]] = torch.mean(info_chart[d, :, k]).tolist()
+                if args.algorithm in ['CMWN_MLDG','MWN_MLDG','MFM_MLDG']:
+                    writer.add_scalars('inner loss info per domain', info_dict[0], step)
+                    writer.add_scalars('outer loss info per domain', info_dict[1], step)
+                    writer.add_scalars('meta loss info per domain', info_dict[2], step)
+                    writer.add_scalars('weight info per domain', info_dict[3], step)
+                    writer.add_scalars('accuracy info per domain', info_dict[4], step)
+                elif args.algorithm in ['MLDG']:
+                    writer.add_scalars('inner loss info per domain', info_dict[0], step)
+                    writer.add_scalars('outer loss info per domain', info_dict[1], step)
+                    writer.add_scalars('accuracy info per domain', info_dict[2], step)
+                elif args.algorithm in ['CMWN_RSC']:
+                    writer.add_scalars('loss info per domain', info_dict[0], step)
+                    writer.add_scalars('meta loss info per domain', info_dict[1], step)
+                    writer.add_scalars('weight info per domain', info_dict[2], step)
+                    writer.add_scalars('accuracy info per domain', info_dict[3], step)
+                elif args.algorithm in ['RSC']:
+                    writer.add_scalars('loss info per domain', info_dict[0], step)
+                    writer.add_scalars('accuracy info per domain', info_dict[1], step)
                 info_chart.zero_()
                 total_num.zero_()
 
@@ -328,15 +332,23 @@ if __name__ == "__main__":
         f.write('done')
 
 
-    if args.algorithm in algorithms.WEIGHTNET:
-        import pandas as pd
-        df = pd.DataFrame(data = loss_table_dom_cls,columns = ['domain','class','innerloss','outerloss','metaloss','weight','accuracy','step'])
-        df.to_csv(os.path.join(args.output_dir,'lossinfo_per_domcls.csv'))
-    elif args.algorithm in ['MLDG']:
-        import pandas as pd
-        df = pd.DataFrame(data=loss_table_dom_cls,
-                          columns=['domain', 'class', 'innerloss', 'outerloss','accuracy','step'])
-        df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
-
+    if 'inforecord' in hparams:
+        if args.algorithm in ['CMWN_MLDG', 'MWN_MLDG', 'MFM_MLDG']:
+            df = pd.DataFrame(data=loss_table_dom_cls,
+                              columns=['domain', 'class', 'innerloss', 'outerloss', 'metaloss', 'weight', 'accuracy',
+                                       'step'])
+            df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
+        elif args.algorithm in ['MLDG']:
+            df = pd.DataFrame(data=loss_table_dom_cls,
+                              columns=['domain', 'class', 'innerloss', 'outerloss', 'accuracy', 'step'])
+            df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
+        elif args.algorithm in ['CMWN_RSC']:
+            df = pd.DataFrame(data=loss_table_dom_cls,
+                              columns=['domain', 'class', 'loss', 'metaloss', 'weight', 'accuracy','step'])
+            df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
+        elif args.algorithm in ['RSC']:
+            df = pd.DataFrame(data=loss_table_dom_cls,
+                              columns=['domain', 'class', 'loss', 'accuracy', 'step'])
+            df.to_csv(os.path.join(args.output_dir, 'lossinfo_per_domcls.csv'))
 
     writer.close()

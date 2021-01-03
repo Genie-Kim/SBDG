@@ -30,18 +30,8 @@ ALGORITHMS = [
     'RSC',
     'MFM_MLDG',
     'MWN_MLDG',
-    'CMWN_MLDG'
-]
-
-WEIGHTNET = [
-    'MWN_MLDG',
-    'CMWN_MLDG'
-]
-METANET = [
-    'MLDG',
-    'MWN_MLDG',
-    'CMWN_MLDG'
-
+    'CMWN_MLDG',
+    'CMWN_RSC'
 ]
 
 
@@ -425,8 +415,8 @@ class MLDG(ERM):
     def mkchart(self,chart,imgnum,di,dj,yi,yj,inloss,outloss):
         with torch.no_grad():
             for cls in range(self.num_classes):
-                chart[di, cls, 0] += self.checknan(torch.mean(inloss[yi == cls]))
-                chart[dj, cls, 1] += self.checknan(torch.mean(outloss[yj == cls]))
+                chart[di, cls, 0] += self.checknan(torch.sum(inloss[yi == cls]))
+                chart[dj, cls, 1] += self.checknan(torch.sum(outloss[yj == cls]))
 
                 imgnum[di, cls, 0] += len(inloss[yi == cls])
                 imgnum[dj, cls, 1] += len(outloss[yj == cls])
@@ -457,8 +447,8 @@ class MLDG(ERM):
                 p.grad = torch.zeros_like(p)
 
         # domain class innerloss, outloss
-        chart = torch.zeros(self.num_domains,self.num_classes,3).cuda().requires_grad_(False)
-        imgnum = torch.zeros(self.num_domains,self.num_classes,3).cuda().requires_grad_(False)
+        chart = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
         correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
         total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
 
@@ -522,8 +512,8 @@ class MLDG(ERM):
 
         self.optimizer.step()
 
-        chart[:,:,2] = correct_percls
-        imgnum[:,:,2] = total_percls # accuracy per batch.
+        chart[:,:,-1] = correct_percls
+        imgnum[:,:,-1] = total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
@@ -833,8 +823,45 @@ class RSC(ERM):
         self.drop_f = (1 - hparams['rsc_f_drop_factor']) * 100
         self.drop_b = (1 - hparams['rsc_b_drop_factor']) * 100
         self.num_classes = num_classes
+        self.num_domains = num_domains
+        self.checknan = lambda x: 0 if torch.isnan(x) else x
+
+    def mkchart(self, chart, imgnum, d,  y,  loss):
+        with torch.no_grad():
+            d = d.squeeze()
+            for i,(di,yi,li) in enumerate(zip(d,y,loss)):
+                chart[di, yi, 0] += li
+                imgnum[di, yi, 0] += 1
+
+        return (chart, imgnum)
+
+    def acc_dom_cls(self,inner_net, x, y):
+        inner_net.eval()
+        with torch.no_grad():
+            correct_temp, total_temp = multi_acc(inner_net(x), y, self.num_classes)
+        inner_net.train()
+        correct_temp = torch.tensor(correct_temp).cuda().requires_grad_(False)
+        total_temp = torch.tensor(total_temp).cuda().requires_grad_(False)
+        return (correct_temp, total_temp)
+
 
     def update(self, minibatches):
+
+        # domain class loss, metaloss, weight, accuracy
+        chart = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+        total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+
+        all_d = torch.cat(
+            [torch.tensor(d).cuda().unsqueeze(0).repeat(len(y), 1) for
+             d, (_, y) in enumerate(minibatches)])
+        for di in range(len(minibatches)):
+            xi, yi = minibatches[di][0], minibatches[di][1]
+            correct_temp, total_temp = self.acc_dom_cls(self.network, xi, yi)
+            correct_percls[di, :] += correct_temp
+            total_percls[di, :] += total_temp
+
         # inputs
         all_x = torch.cat([x for x, y in minibatches])
         # labels
@@ -873,12 +900,256 @@ class RSC(ERM):
         all_p_muted_again = self.classifier(all_f * mask)
 
         # Equation (5): update
-        loss = F.cross_entropy(all_p_muted_again, all_y)
+        loss = F.cross_entropy(all_p_muted_again, all_y,reduction='none')
+        lossinfo = loss.data
+        loss = torch.mean(torch.reshape(loss, (len(loss), 1)))
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        return {'loss': loss.item()}
+        chart, imgnum = self.mkchart(chart, imgnum, all_d, all_y, lossinfo)
+
+        chart[:,:,-1] = correct_percls
+        imgnum[:,:,-1] = total_percls # accuracy per batch.
+
+
+        return {'loss': loss.item(),'chart':(chart,imgnum)}
+
+
+class CMWN_RSC(ERM):
+    def __init__(self, input_shape, num_classes, num_domains, hparams):
+        super(CMWN_RSC, self).__init__(input_shape, num_classes, num_domains,
+                                   hparams)
+        self.drop_f = (1 - hparams['rsc_f_drop_factor']) * 100
+        self.drop_b = (1 - hparams['rsc_b_drop_factor']) * 100
+        self.num_classes = num_classes
+
+        if hparams['clscond']:
+            mlp_input = 1 + num_classes + num_domains
+        else:
+            mlp_input = 1 + num_domains
+
+        if hparams['2hid'] !=None:
+            self.weight_net = CWNet(mlp_input, hparams['1hid'], 1,hidden2 = hparams['2hid']).cuda()
+        else:
+            self.weight_net = CWNet(mlp_input, hparams['1hid'], 1).cuda()
+
+        self.optimMWN = torch.optim.Adam(
+            self.weight_net.parameters(),
+            lr=self.hparams["mod_lr"],
+            weight_decay=1e-4
+        )
+
+        self.num_domains = num_domains
+        self.checknan = lambda x: 0 if torch.isnan(x) else x
+
+    def mkchart(self, chart, imgnum, d, ds, y, ys, loss, metaloss, weit):
+        with torch.no_grad():
+            weit = weit.squeeze()
+            d = d.squeeze()
+            for i,(di,yi,li,wi) in enumerate(zip(d,y,loss,weit)):
+                chart[di, yi, 0] += li
+                imgnum[di, yi, 0] += 1
+
+                chart[di, yi, 2] += wi
+                imgnum[di, yi, 2] += 1
+            ds = torch._cast_Long(ds)
+            for i, (dsi,ysi,mli) in enumerate(zip(ds,ys,metaloss)):
+                chart[dsi, ysi, 1] += mli
+                imgnum[dsi, ysi, 1] += 1
+
+        return (chart, imgnum)
+
+    def acc_dom_cls(self,inner_net, x, y):
+        inner_net.eval()
+        with torch.no_grad():
+            correct_temp, total_temp = multi_acc(inner_net(x), y, self.num_classes)
+        inner_net.train()
+        correct_temp = torch.tensor(correct_temp).cuda().requires_grad_(False)
+        total_temp = torch.tensor(total_temp).cuda().requires_grad_(False)
+        return (correct_temp, total_temp)
+
+    def miniupdate(self,all_x, all_y, all_o,inner_net_feature,inner_net_classfier):
+        # features
+        all_f = inner_net_feature(all_x)
+        # predictions
+        all_p = inner_net_classfier(all_f)
+
+        # Equation (1): compute gradients with respect to representation
+        all_g = autograd.grad((all_p * all_o).sum(), all_f)[0]
+
+        # Equation (2): compute top-gradient-percentile mask
+        percentiles = np.percentile(all_g.cpu(), self.drop_f, axis=1)
+        percentiles = torch.Tensor(percentiles)
+        percentiles = percentiles.unsqueeze(1).repeat(1, all_g.size(1))
+        mask_f = all_g.lt(percentiles.cuda()).float()
+
+        # Equation (3): mute top-gradient-percentile activations
+        all_f_muted = all_f * mask_f
+
+        # Equation (4): compute muted predictions
+        all_p_muted = inner_net_classfier(all_f_muted)
+
+        # Section 3.3: Batch Percentage
+        all_s = F.softmax(all_p, dim=1)
+        all_s_muted = F.softmax(all_p_muted, dim=1)
+        changes = (all_s * all_o).sum(1) - (all_s_muted * all_o).sum(1)
+        percentile = np.percentile(changes.detach().cpu(), self.drop_b)
+        mask_b = changes.lt(percentile).float().view(-1, 1)
+        mask = torch.logical_or(mask_f, mask_b).float()
+
+        # Equations (3) and (4) again, this time mutting over examples
+        all_p_muted_again = inner_net_classfier(all_f * mask)
+
+        # Equation (5): update
+        loss = F.cross_entropy(all_p_muted_again, all_y,reduction='none')
+        return loss
+
+    def update(self, minibatches,small_meta_loader):
+
+        # inputs
+        all_x = torch.cat([x for x, y in minibatches])
+        # labels
+        all_y = torch.cat([y for _, y in minibatches])
+        # one-hot labels
+        all_o = torch.nn.functional.one_hot(all_y, self.num_classes)
+
+        # domain class loss, metaloss, weight, accuracy
+        chart = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+        total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
+
+        # prepare mini batch from meta dataset
+        small_meta_batch = [(x.to("cuda"), y.to("cuda"))
+                            for x, y in next(zip(*small_meta_loader))]
+        xs = torch.cat([x for x, y in small_meta_batch])
+        ys = torch.cat([y for x, y in small_meta_batch])
+        ds = torch.cat([torch.Tensor([i for k in range(len(x[1]))]).cuda() for i, x in enumerate(small_meta_batch)])
+
+
+        for di in range(len(minibatches)):
+            xi, yi = minibatches[di][0], minibatches[di][1]
+            correct_temp, total_temp = self.acc_dom_cls(self.network, xi, yi)
+            correct_percls[di, :] += correct_temp
+            total_percls[di, :] += total_temp
+
+        # for CMWN condition
+        clscond = all_o
+        domcond = torch.cat(
+            [F.one_hot(torch.tensor(d).cuda(), num_classes=self.num_domains).unsqueeze(0).repeat(len(y), 1) for
+             d, (_, y) in enumerate(minibatches)])
+        all_d = torch.cat(
+            [torch.tensor(d).cuda().unsqueeze(0).repeat(len(y), 1) for
+             d, (_, y) in enumerate(minibatches)])
+
+        self.optimizer.zero_grad()
+        inner_net_feature = higher.patch.monkeypatch(self.network[0])
+        opt_feat = torch.optim.Adam(
+            self.network[0].parameters(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams['weight_decay']
+        )
+        inner_opt_feat = higher.optim.get_diff_optim(
+            opt_feat, self.network[0].parameters(), inner_net_feature, override=None)
+
+        inner_net_classfier = higher.patch.monkeypatch(self.network[1])
+        opt_cls = torch.optim.Adam(
+            self.network[1].parameters(),
+            lr=self.hparams["lr"],
+            weight_decay=self.hparams['weight_decay']
+        )
+        inner_opt_cls = higher.optim.get_diff_optim(
+            opt_cls, self.network[1].parameters(), inner_net_classfier, override=None)
+
+        # first inner update
+        innerloss = self.miniupdate(all_x, all_y, all_o,inner_net_feature,inner_net_classfier)
+        innerloss = torch.reshape(innerloss, (len(innerloss), 1))
+        if self.hparams['clscond']:
+            weight_input = torch.cat((innerloss, domcond, clscond), 1)
+            v_lambda = self.weight_net(weight_input.data)  # calculate weight
+        else:
+            weight_input = torch.cat((innerloss, domcond), 1)
+            v_lambda = self.weight_net(weight_input.data)  # calculate weight
+
+        weighted_loss = torch.mean(torch.mul(innerloss, v_lambda))
+        inner_opt_cls.step(weighted_loss)
+        inner_opt_feat.step(weighted_loss)  # inner net one step updated(step 1)
+
+        self.optimMWN.zero_grad()
+        meta_obj = F.cross_entropy(inner_net_classfier(inner_net_feature(xs)), ys, reduction='none')
+        metaloss = meta_obj.data
+        meta_obj = torch.mean(meta_obj)
+        meta_obj.backward()
+        self.optimMWN.step()  # update weight net
+        # now weight net updated #########################
+        # delete differentiable optimizer
+        del inner_net_feature
+        del inner_net_classfier
+        del inner_opt_feat
+        del inner_opt_cls
+        del opt_cls
+        del opt_feat
+
+        # features
+        all_f = self.featurizer(all_x)
+        # predictions
+        all_p = self.classifier(all_f)
+
+        # Equation (1): compute gradients with respect to representation
+        all_g = autograd.grad((all_p * all_o).sum(), all_f)[0]
+
+        # Equation (2): compute top-gradient-percentile mask
+        percentiles = np.percentile(all_g.cpu(), self.drop_f, axis=1)
+        percentiles = torch.Tensor(percentiles)
+        percentiles = percentiles.unsqueeze(1).repeat(1, all_g.size(1))
+        mask_f = all_g.lt(percentiles.cuda()).float()
+
+        # Equation (3): mute top-gradient-percentile activations
+        all_f_muted = all_f * mask_f
+
+        # Equation (4): compute muted predictions
+        all_p_muted = self.classifier(all_f_muted)
+
+        # Section 3.3: Batch Percentage
+        all_s = F.softmax(all_p, dim=1)
+        all_s_muted = F.softmax(all_p_muted, dim=1)
+        changes = (all_s * all_o).sum(1) - (all_s_muted * all_o).sum(1)
+        percentile = np.percentile(changes.detach().cpu(), self.drop_b)
+        mask_b = changes.lt(percentile).float().view(-1, 1)
+        mask = torch.logical_or(mask_f, mask_b).float()
+
+        # Equations (3) and (4) again, this time mutting over examples
+        all_p_muted_again = self.classifier(all_f * mask)
+
+        # Equation (5): update
+        loss = F.cross_entropy(all_p_muted_again, all_y, reduction='none')
+        lossinfo = loss.data
+        loss = torch.reshape(loss, (len(loss), 1))
+
+        with torch.no_grad():
+            if self.hparams['clscond']:
+                weight_input = torch.cat((loss, domcond, clscond), 1)
+                v_lambda_new = self.weight_net(weight_input.data)  # calculate weight
+            else:
+                weight_input = torch.cat((loss, domcond), 1)
+                v_lambda_new = self.weight_net(weight_input.data)
+
+        weit = v_lambda_new.data
+        weighted_loss = torch.mean(torch.mul(loss, v_lambda_new))
+
+        chart, imgnum = self.mkchart(chart, imgnum, all_d, ds, all_y, ys, lossinfo, metaloss, weit)
+
+        self.optimizer.zero_grad()
+        weighted_loss.backward()
+        self.optimizer.step()
+
+        chart[:,:,-1] = correct_percls
+        imgnum[:,:,-1] = total_percls # accuracy per batch.
+
+        torch.cuda.empty_cache()
+        return {'loss': weighted_loss.item(),'chart':(chart,imgnum)}
+
 
 class MFNet(torch.nn.Module):
     def __init__(self, input, hidden1, output):
@@ -1091,22 +1362,18 @@ class MWN_MLDG(ERM):
     def mkchart(self, chart, imgnum, di, dj,ds, yi, yj,ys, inloss, outloss,metaloss,weit):
         with torch.no_grad():
             for cls in range(self.num_classes):
-                chart[di, cls, 0] += self.checknan(torch.mean(inloss[yi == cls]))
-                chart[dj, cls, 1] += self.checknan(torch.mean(outloss[yj == cls]))
-
-                chart[di, cls, 3] += self.checknan(torch.mean(weit[yi == cls]))
-
+                chart[di, cls, 0] += self.checknan(torch.sum(inloss[yi == cls]))
+                chart[dj, cls, 1] += self.checknan(torch.sum(outloss[yj == cls]))
+                chart[di, cls, 3] += self.checknan(torch.sum(weit[yi == cls]))
 
                 imgnum[di, cls, 0] += len(inloss[yi == cls])
                 imgnum[dj, cls, 1] += len(outloss[yj == cls])
-
                 imgnum[di, cls, 3] += len(weit[yi == cls])
 
-                ss = ds.data.cpu().int().tolist()
-                yy = ys.data.cpu().int().tolist()
-                for i,(s,y) in enumerate(zip(ss,yy)):
-                    chart[s, y, 2] += self.checknan(torch.mean(metaloss[i]))
-                    imgnum[s, y, 2] += 1
+            ds = torch._cast_Long(ds)
+            for i,(dsi,ysi) in enumerate(zip(ds,ys)):
+                chart[dsi, ysi, 2] += metaloss[i]
+                imgnum[dsi, ysi, 2] += 1
 
 
         return (chart, imgnum)
@@ -1146,8 +1413,8 @@ class MWN_MLDG(ERM):
                 p.grad.detach()
 
         # domain class innerloss, outloss, metaloss, weight
-        chart = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
-        imgnum = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        chart = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
         correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
         total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
 
@@ -1263,8 +1530,8 @@ class MWN_MLDG(ERM):
 
         self.optimizer.step()
 
-        chart[:,:,4] = correct_percls
-        imgnum[:,:,4] = total_percls # accuracy per batch.
+        chart[:,:,-1] = correct_percls
+        imgnum[:,:,-1] = total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
@@ -1328,22 +1595,19 @@ class CMWN_MLDG(ERM):
     def mkchart(self, chart, imgnum, di, dj,ds, yi, yj,ys, inloss, outloss,metaloss,weit):
         with torch.no_grad():
             for cls in range(self.num_classes):
-                chart[di, cls, 0] += self.checknan(torch.mean(inloss[yi == cls]))
-                chart[dj, cls, 1] += self.checknan(torch.mean(outloss[yj == cls]))
-
-                chart[di, cls, 3] += self.checknan(torch.mean(weit[yi == cls]))
+                chart[di, cls, 0] += self.checknan(torch.sum(inloss[yi == cls]))
+                chart[dj, cls, 1] += self.checknan(torch.sum(outloss[yj == cls]))
+                chart[di, cls, 3] += self.checknan(torch.sum(weit[yi == cls]))
 
 
                 imgnum[di, cls, 0] += len(inloss[yi == cls])
                 imgnum[dj, cls, 1] += len(outloss[yj == cls])
-
                 imgnum[di, cls, 3] += len(weit[yi == cls])
 
-                ss = ds.data.cpu().int().tolist()
-                yy = ys.data.cpu().int().tolist()
-                for i,(s,y) in enumerate(zip(ss,yy)):
-                    chart[s, y, 2] += self.checknan(torch.mean(metaloss[i]))
-                    imgnum[s, y, 2] += 1
+            ds = torch._cast_Long(ds)
+            for i,(dsi,ysi) in enumerate(zip(ds,ys)):
+                chart[dsi, ysi, 2] += metaloss[i]
+                imgnum[dsi, ysi, 2] += 1
 
 
         return (chart, imgnum)
@@ -1383,8 +1647,8 @@ class CMWN_MLDG(ERM):
                 p.grad.detach()
 
         # domain class innerloss, outloss, metaloss, weight
-        chart = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
-        imgnum = torch.zeros(self.num_domains,self.num_classes,5).cuda().requires_grad_(False)
+        chart = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
+        imgnum = torch.zeros(self.num_domains,self.num_classes,self.hparams['inforecord']).cuda().requires_grad_(False)
         correct_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
         total_percls = torch.zeros(self.num_domains,self.num_classes).cuda().requires_grad_(False)
 
@@ -1521,8 +1785,8 @@ class CMWN_MLDG(ERM):
 
         self.optimizer.step()
 
-        chart[:,:,4] = correct_percls
-        imgnum[:,:,4] = total_percls # accuracy per batch.
+        chart[:,:,-1] = correct_percls
+        imgnum[:,:,-1] = total_percls # accuracy per batch.
 
         # torch.cuda.empty_cache()
 
