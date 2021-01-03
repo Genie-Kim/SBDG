@@ -186,8 +186,12 @@ if __name__ == "__main__":
         writer = SummaryWriter(os.path.join(args.output_dir, 'tb'))
 
     loss_table_dom_cls = []
-    info_chart = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
-    total_num = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
+    if args.algorithm in algorithms.WEIGHTNET:
+        info_chart = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
+        total_num = torch.zeros(len(source_names),dataset.num_classes,5).cuda().requires_grad_(False)
+    elif args.algorithm in algorithms.METANET:
+        info_chart = torch.zeros(len(source_names),dataset.num_classes,3).cuda().requires_grad_(False)
+        total_num = torch.zeros(len(source_names),dataset.num_classes,3).cuda().requires_grad_(False)
 
     for step in tqdm(range(start_step, n_steps)):
         step_start_time = time.time()
