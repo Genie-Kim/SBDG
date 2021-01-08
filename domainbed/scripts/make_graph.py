@@ -36,8 +36,8 @@ def overlab_graph(tempdf,col1,col2,col3,title,barlimit=None,xaxis = 'index',col1
     ax3.set_ylabel(col3legend)
     plt.title(title)
     plt.tight_layout()
-    ax1.set_ylim(0, 1.2)
-    ax2.set_ylim(0.01, 0.275)
+    # ax1.set_ylim(0, 1.2)
+    # ax2.set_ylim(0.01, 0.275)
     if barlimit!=None:
         ax3.set_ylim(barlimit[0], barlimit[1])
     if savepath != None:
@@ -99,9 +99,9 @@ def mkdictperstep(csvdf,popul):
 
 if __name__=='__main__':
 
-    csvpath = '/home/genie/PycharmProjects/DomainBed/search/269ba7ac8d3fa0912b2147b2649978ad/lossinfo_per_domcls.csv'
-    data = 'pacs'
-    img_savepath = '/home/genie/PycharmProjects/DomainBed/search/269ba7ac8d3fa0912b2147b2649978ad/graph'
+    csvpath = '/home/genie/PycharmProjects/DomainBed/domainbed/scripts/train_output/lossinfo_per_domcls.csv'
+    data = 'vlcs'
+    img_savepath = '/home/genie/PycharmProjects/DomainBed/performance/graph'
     globalsizelimit = (750,2200)
     localsizelimit = (100,500)
 

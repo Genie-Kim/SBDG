@@ -54,6 +54,7 @@ if __name__ == "__main__":
     # every once in a while, and then load them from disk here.
     start_step = 0
     algorithm_dict = None
+    # algorithm_dict = torch.load('/home/genie/1hddc/icip/vlcs_mldghid1_L/9d8ce8da817ae4d9e1b56c9cab37d200/model.pkl')
 
     os.makedirs(args.output_dir, exist_ok=True)
     sys.stdout = misc.Tee(os.path.join(args.output_dir, 'out.txt'))
@@ -165,7 +166,7 @@ if __name__ == "__main__":
         len(dataset) - len(args.test_envs), hparams)
 
     if algorithm_dict is not None:
-        algorithm.load_state_dict(algorithm_dict)
+        algorithm.load_state_dict(algorithm_dict['model_dict'])
 
     algorithm.to(device)
 
