@@ -1637,6 +1637,7 @@ class CMWN_MLDG(ERM):
 
         For computational efficiency, we do not compute second derivatives.
         """
+        torch.cuda.empty_cache()
         num_mb = len(minibatches)
         objective = 0
         self.optimMWN.zero_grad()
@@ -1788,6 +1789,6 @@ class CMWN_MLDG(ERM):
         chart[:,:,-1] = correct_percls
         imgnum[:,:,-1] = total_percls # accuracy per batch.
 
-        # torch.cuda.empty_cache()
+
 
         return {'loss': objective,'chart':(chart,imgnum)}

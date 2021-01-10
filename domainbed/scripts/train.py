@@ -25,6 +25,8 @@ import re
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 import pandas as pd
+import copy
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
@@ -116,9 +118,16 @@ if __name__ == "__main__":
     out_splits = []
     meta_splits = []
     for env_i, env in enumerate(dataset):
-        out, in_ = misc.split_dataset(env,
-            int(len(env)*args.holdout_fraction),
-            misc.seed_hash(args.trial_seed, env_i))
+        if env_i in args.test_envs:
+            out, in_ = misc.split_dataset(env,
+                int(len(env)),
+                misc.seed_hash(args.trial_seed, env_i))
+            in_ = copy.deepcopy(out)
+        else:
+            out, in_ = misc.split_dataset(env,
+                int(len(env)*args.holdout_fraction),
+                misc.seed_hash(args.trial_seed, env_i))
+
         if 'num_smallmetaset' in hparams:
             # in_ 에서 class별 hparams['num_smallmetaset']개수만큼 뽑아서 balanced small meta set만든다.
             print('make small meta set:',env_i)
@@ -148,7 +157,6 @@ if __name__ == "__main__":
             num_workers=2)
             for i, env in enumerate(meta_splits)
             if i not in args.test_envs]
-
 
     eval_loaders = [FastDataLoader(
         dataset=env,

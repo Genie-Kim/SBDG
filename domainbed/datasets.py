@@ -224,7 +224,37 @@ class VLCS_origin(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "VLCS/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
-        print(1)
+        txtdict = {}
+        for i,env in enumerate(VLCS_origin.ENVIRONMENTS):
+            if i in test_envs:
+                txtdict[i] = os.path.join(os.path.dirname(__file__), 'vlcs_txtlist', '%s_test.txt' % env)
+            else:
+                txtdict[i] = os.path.join(os.path.dirname(__file__), 'vlcs_txtlist', '%s_train.txt' % env)
+
+        # changing mother's self.datasets instances.
+        for idx, domain in enumerate(self.ENVIRONMENTS):
+            path,label = self._dataset_info(txtdict[idx])
+            path = [os.path.join(root,x) for x in path]
+            self.datasets[idx].classes = list(set(label))
+            self.datasets[idx].class_to_idx = {k: v for v, k in enumerate(self.datasets[idx].classes)}
+            self.datasets[idx].imgs = [(p,l) for p,l in zip(path,label)]
+            self.datasets[idx].samples = list.copy(self.datasets[idx].imgs)
+            self.datasets[idx].targets = label
+
+        self.num_classes = len(self.datasets[-1].classes)
+
+    def _dataset_info(self,txt_labels):
+        with open(txt_labels, 'r') as f:
+            images_list = f.readlines()
+
+        file_names = []
+        labels = []
+        for row in images_list:
+            row = row.split(' ')
+            file_names.append(row[0])
+            labels.append(int(row[1]))
+
+        return file_names, labels
 
 class PACS(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300

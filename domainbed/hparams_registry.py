@@ -134,9 +134,11 @@ def _hparams(algorithm, dataset, random_state):
             hparams['small_batch'] = (28,28) # hparams['num_smallmetaset']*class*domain 개수보다 작아야함.
 
     elif algorithm =='CMWN_MLDG':
+        hparams['alexnet'] = (True,True)
+        hparams['batch_size'] = (5,5)
         hparams['inforecord']  = (5,5)
         hparams["mod_lr"] = (1e-4,1e-4)
-        hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
+        hparams['num_smallmetaset'] = (5,5) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
         hparams['1hid'] = (200,200)
         hparams['2hid'] = (None,None) # 50,4 or 25 8
         hparams['clscond'] = (False,False)
