@@ -10,8 +10,8 @@ from domainbed.lib import wide_resnet
 
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
+from torchvision.models.utils import load_state_dict_from_url
 
-__all__ = ['AlexNet', 'alexnet']
 
 model_urls = {
     'alexnet': 'https://download.pytorch.org/models/alexnet-owt-4df8aa71.pth',
@@ -172,8 +172,8 @@ class ContextNet(nn.Module):
 
 def Featurizer(input_shape, hparams):
     """Auto-select an appropriate featurizer for the given input shape."""
-    if hparams['alexnet']:
-        return AlexNet(input_shape,hparams)
+    if hparams['alexnetpretrained']:
+        return alexnet(input_shape,hparams)
     if len(input_shape) == 1:
         return MLP(input_shape[0], 128, hparams)
     elif input_shape[1:3] == (28, 28):
@@ -186,45 +186,21 @@ def Featurizer(input_shape, hparams):
         raise NotImplementedError
 
 
-class Id(nn.Module):
-    def __init__(self):
-        super(Id, self).__init__()
+class alexnet(torch.nn.Module):
+    """ResNet with the softmax chopped off and the batchnorm frozen"""
+    def __init__(self, input_shape, hparams):
+        super(alexnet, self).__init__()
+        self.network = torchvision.models.alexnet(pretrained=True)
+        self.n_outputs = 4096
+        # save memory
+        del self.network.classifier[-1]
+
+        self.freeze_bn()
+        self.hparams = hparams
 
     def forward(self, x):
-        return x
-
-
-class AlexNet(nn.Module):
-    def __init__(self, input_shape,hparams):
-        super(AlexNet, self).__init__()
-        dropout=True
-
-        self.network = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(64, 192, kernel_size=5, padding=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(192, 384, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
-            Flatten(),
-            nn.Dropout() if dropout else Id(),
-            nn.Linear(256 * 6 * 6, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout() if dropout else Id(),
-            nn.Linear(4096, 4096),
-            nn.ReLU(inplace=True),
-        )
-
-        self.n_outputs =4096
-
-        self.hparams = hparams
+        """Encode x into a feature vector of size n_outputs."""
+        return self.network(x)
 
     def train(self, mode=True):
         """
@@ -237,12 +213,3 @@ class AlexNet(nn.Module):
         for m in self.network.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
-
-    def forward(self, x):
-        return self.network(x)
-
-class Flatten(torch.nn.Module):
-    def __init__(self):
-        super(Flatten, self).__init__()
-    def forward(self, x):
-        return x.view(x.size(0), 256 * 6 * 6)

@@ -1680,7 +1680,7 @@ class CMWN_MLDG(ERM):
             domcond = F.one_hot(torch.tensor(di).cuda(), num_classes=self.num_domains).unsqueeze(0).repeat(len(yi), 1)
             # meta weight net update
             with higher.innerloop_ctx(self.network, self.optimizer,
-                copy_initial_weights=False) as (inner_network, inner_optimizer):
+                copy_initial_weights=True) as (inner_network, inner_optimizer):
 
                 li = F.cross_entropy(inner_network(xi), yi, reduction='none')
                 li = torch.reshape(li, (len(li), 1))
