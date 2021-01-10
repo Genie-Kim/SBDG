@@ -1591,6 +1591,7 @@ class CMWN_MLDG(ERM):
         self.num_classes = num_classes
         self.num_domains = num_domains
         self.checknan = lambda x: 0 if torch.isnan(x) else x
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,hparams['stepepoch'],0.1)
 
     def mkchart(self, chart, imgnum, di, dj,ds, yi, yj,ys, inloss, outloss,metaloss,weit):
         with torch.no_grad():
@@ -1792,4 +1793,4 @@ class CMWN_MLDG(ERM):
 
 
 
-        return {'loss': objective,'chart':(chart,imgnum)}
+        return {'loss': objective,'chart':(chart,imgnum),'sche':self.scheduler}

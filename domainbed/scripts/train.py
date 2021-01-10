@@ -217,6 +217,9 @@ if __name__ == "__main__":
                 info_chart+=val[0]
                 total_num+=val[1]
                 continue
+            if key == 'sche':
+                val.step()
+                continue
             checkpoint_vals[key].append(val)
             if key == 'loss':
                 writer.add_scalar('train loss', step_vals['loss'], step)
