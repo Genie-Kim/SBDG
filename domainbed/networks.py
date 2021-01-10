@@ -242,5 +242,7 @@ class AlexNet(nn.Module):
         return self.network(x)
 
 class Flatten(torch.nn.Module):
+    def __init__(self):
+        super(Flatten, self).__init__()
     def forward(self, x):
         return x.view(x.size(0), 256 * 6 * 6)

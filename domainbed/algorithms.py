@@ -1667,27 +1667,19 @@ class CMWN_MLDG(ERM):
                 ys = small_meta_batch[di][1]
                 ds = torch.Tensor([di for k in range(len(ys))]).cuda()
 
-            # clone-network on task "i"
-            inner_net = copy.deepcopy(self.network)
 
-            correct_temp, total_temp = self.acc_dom_cls(inner_net,xi,yi)
+
+            correct_temp, total_temp = self.acc_dom_cls(self.network,xi,yi)
             correct_percls[di, :] += correct_temp
             total_percls[di, :] += total_temp
-            correct_temp, total_temp = self.acc_dom_cls(inner_net,xj,yj)
+            correct_temp, total_temp = self.acc_dom_cls(self.network,xj,yj)
             correct_percls[dj, :] += correct_temp
             total_percls[dj, :] += total_temp
-
-            inner_opt = torch.optim.Adam(
-                inner_net.parameters(),
-                lr=self.hparams["lr"],
-                weight_decay=self.hparams['weight_decay']
-            )
-            inner_opt.zero_grad()
 
             clscond = F.one_hot(yi, num_classes=self.num_classes)
             domcond = F.one_hot(torch.tensor(di).cuda(), num_classes=self.num_domains).unsqueeze(0).repeat(len(yi), 1)
             # meta weight net update
-            with higher.innerloop_ctx(inner_net, inner_opt,
+            with higher.innerloop_ctx(self.network, self.optimizer,
                 copy_initial_weights=False) as (inner_network, inner_optimizer):
 
                 li = F.cross_entropy(inner_network(xi), yi, reduction='none')
@@ -1711,6 +1703,15 @@ class CMWN_MLDG(ERM):
                 meta_obj = torch.mean(meta_obj)
                 meta_obj.backward()
                 self.optimMWN.step()
+
+            # clone-network on task "i"
+            inner_net = copy.deepcopy(self.network)
+            inner_opt = torch.optim.Adam(
+                inner_net.parameters(),
+                lr=self.hparams["lr"],
+                weight_decay=self.hparams['weight_decay']
+            )
+            inner_opt.zero_grad()
 
             li =  F.cross_entropy(inner_net(xi), yi, reduction='none')
             inloss = li.data
