@@ -27,8 +27,7 @@ DATASETS = [
     "TerraIncognita",
     "DomainNet",
     "SVIRO",
-        # Imbalance
-    "ImbalanceDomainNet"
+    "VLCS_origin",
 ]
 
 def get_dataset_class(dataset_name):
@@ -216,8 +215,16 @@ class VLCS(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
     ENVIRONMENTS = ["C", "L", "S", "V"]
     def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "VLCS_domainbed/")
+        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
+class VLCS_origin(MultipleEnvironmentImageFolder):
+    CHECKPOINT_FREQ = 300
+    ENVIRONMENTS = ["C", "L", "S", "V"]
+    def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "VLCS/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+        print(1)
 
 class PACS(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 300
