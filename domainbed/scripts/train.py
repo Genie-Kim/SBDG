@@ -117,6 +117,8 @@ if __name__ == "__main__":
     in_splits = []
     out_splits = []
     meta_splits = []
+    best_target_val_mean = 0
+    best_source_val_mean = 0
     for env_i, env in enumerate(dataset):
         if env_i in args.test_envs:
             out, in_ = misc.split_dataset(env,
@@ -328,7 +330,7 @@ if __name__ == "__main__":
 
             torch.cuda.empty_cache()
 
-            if not args.skip_model_save:
+            if best_source_val_mean < source_val_mean:
                 save_dict = {
                     "args": vars(args),
                     "model_input_shape": dataset.input_shape,
@@ -338,7 +340,21 @@ if __name__ == "__main__":
                     "model_dict": algorithm.cpu().state_dict()
                 }
                 algorithm.cuda()
-                torch.save(save_dict, os.path.join(args.output_dir, str(step)+"model.pkl"))
+                torch.save(save_dict, os.path.join(args.output_dir, "best_val_model.pkl"))
+                best_source_val_mean = source_val_mean
+
+            if best_target_val_mean < target_val_mean:
+                save_dict = {
+                    "args": vars(args),
+                    "model_input_shape": dataset.input_shape,
+                    "model_num_classes": dataset.num_classes,
+                    "model_num_domains": len(dataset) - len(args.test_envs),
+                    "model_hparams": hparams,
+                    "model_dict": algorithm.cpu().state_dict()
+                }
+                algorithm.cuda()
+                torch.save(save_dict, os.path.join(args.output_dir, "best_target_model.pkl"))
+                best_target_val_mean = target_val_mean
 
     # if not args.skip_model_save:
     #     save_dict = {
@@ -353,7 +369,7 @@ if __name__ == "__main__":
     #     torch.save(save_dict, os.path.join(args.output_dir, "model.pkl"))
 
     with open(os.path.join(args.output_dir, 'done'), 'w') as f:
-        f.write('done')
+        f.write('done best target :'+str(best_target_val_mean)+', best source val :'+str(best_source_val_mean))
 
 
     if 'inforecord' in hparams:
