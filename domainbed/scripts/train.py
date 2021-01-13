@@ -56,7 +56,7 @@ if __name__ == "__main__":
     # every once in a while, and then load them from disk here.
     start_step = 0
     algorithm_dict = None
-    # algorithm_dict = torch.load('/home/genie/PycharmProjects/DomainBed/performance/dg_performance_CMWN1hid/3055dfef63ef0f376a3f0340a5147d59/model.pkl')
+    # algorithm_dict = torch.load('/home/genie/PycharmProjects/DomainBed/performance/vlcs_mldg2/vlcs2/44eec3c2a184d18e7f36d4816576c454/model.pkl')
 
     os.makedirs(args.output_dir, exist_ok=True)
     sys.stdout = misc.Tee(os.path.join(args.output_dir, 'out.txt'))
@@ -328,17 +328,29 @@ if __name__ == "__main__":
 
             torch.cuda.empty_cache()
 
-    if not args.skip_model_save:
-        save_dict = {
-            "args": vars(args),
-            "model_input_shape": dataset.input_shape,
-            "model_num_classes": dataset.num_classes,
-            "model_num_domains": len(dataset) - len(args.test_envs),
-            "model_hparams": hparams,
-            "model_dict": algorithm.cpu().state_dict()
-        }
+            if not args.skip_model_save:
+                save_dict = {
+                    "args": vars(args),
+                    "model_input_shape": dataset.input_shape,
+                    "model_num_classes": dataset.num_classes,
+                    "model_num_domains": len(dataset) - len(args.test_envs),
+                    "model_hparams": hparams,
+                    "model_dict": algorithm.cpu().state_dict()
+                }
+                algorithm.cuda()
+                torch.save(save_dict, os.path.join(args.output_dir, str(step)+"model.pkl"))
 
-        torch.save(save_dict, os.path.join(args.output_dir, "model.pkl"))
+    # if not args.skip_model_save:
+    #     save_dict = {
+    #         "args": vars(args),
+    #         "model_input_shape": dataset.input_shape,
+    #         "model_num_classes": dataset.num_classes,
+    #         "model_num_domains": len(dataset) - len(args.test_envs),
+    #         "model_hparams": hparams,
+    #         "model_dict": algorithm.cpu().state_dict()
+    #     }
+    #
+    #     torch.save(save_dict, os.path.join(args.output_dir, "model.pkl"))
 
     with open(os.path.join(args.output_dir, 'done'), 'w') as f:
         f.write('done')

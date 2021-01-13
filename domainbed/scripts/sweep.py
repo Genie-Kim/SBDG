@@ -128,10 +128,12 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     data_dir, hparams,checkpoint_freq):
 
     #case1
-    hlist1 = ['"1hid":100,"2hid":6','"1hid":50,"2hid":16','"1hid":40,"2hid":20']
-    hlist2 = ['"clscond":"False"']
-    hlist3 = ['"mod_lr":5e-4', '"mod_lr":1e-4', '"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":6e-5','"mod_lr":1e-6']
-    hparam_list = list(product(hlist1, hlist2,hlist3))
+    hlist1 = ['"1hid":100,"1hid":150','"1hid":200','"1hid":50']
+    hlist5 = ['"batch_size":128','"batch_size":32','"batch_size":48','"batch_size":64','"batch_size":86','"batch_size":160']
+    hlist2 = ['"num_smallmetaset":"6"','"num_smallmetaset":"12"','"num_smallmetaset":"16"','"num_smallmetaset":"24"']
+    hlist3 = ['"mod_lr":1e-3','"mod_lr":5e-4', '"mod_lr":1e-4', '"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":5e-6','"mod_lr":1e-6']
+    hlist4 = ['"lr":1e-3', '"lr":8e-4', '"lr":6e-4', '"lr":4e-4', '"lr":1e-4', '"lr":8e-5','"lr":5e-5','"lr":3e-5','"lr":1e-5','"lr":5e-6','"lr":1e-6']
+    hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
 
     # #case2
     # hlist1 = ['"mod_lr":1e-4','"mod_lr":1e-5','"mod_lr":5e-6']

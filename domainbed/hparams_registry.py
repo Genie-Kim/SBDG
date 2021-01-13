@@ -78,6 +78,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['mlp_depth'] = (3, int(random_state.choice([3, 4, 5])))
         hparams['mlp_dropout'] = (0., random_state.choice([0., 0.1, 0.5]))
     elif algorithm == "RSC":
+        hparams['alexnetpretrained'] = (True, True)
         hparams['inforecord'] = (2, 2)
         hparams['rsc_f_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
         hparams['rsc_b_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
@@ -99,6 +100,7 @@ def _hparams(algorithm, dataset, random_state):
     elif algorithm == "MMD" or algorithm == "CORAL":
         hparams['mmd_gamma'] = (1., 10**random_state.uniform(-1, 1))
     elif algorithm == "MLDG":
+        hparams['alexnetpretrained'] = (False, True)
         hparams['inforecord'] = (3, 3)
         hparams['mldg_beta'] = (1., 10**random_state.uniform(-1, 1))
     elif algorithm == "MTL":
@@ -108,7 +110,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['vrex_penalty_anneal_iters'] = (500, int(10**random_state.uniform(0, 4)))
     elif algorithm == "MFM_MLDG":
         hparams['small_meta_data'] = (True, True)
-        hparams["mod_lr"] = (1e-4,1e-4)
+        hparams["mod_lr"] = (5e-5,5e-5)
         hparams['num_smallmetaset'] = (7,7)
         hparams['hidden_neurons'] = (256,256)
         hparams['mldg_beta'] = (1., 10 ** random_state.uniform(-1, 1))
@@ -155,8 +157,12 @@ def _hparams(algorithm, dataset, random_state):
 
 
     elif algorithm == 'CMWN_RSC':
+        hparams['batch_size'] = (128,128)
+        hparams['stepepoch'] = (900, 900)
+        hparams['alexnetpretrained']=(True,True)
+        hparams["lr"] = (5e-4, 5e-4)
         hparams['inforecord'] = (4, 4)
-        hparams["mod_lr"] = (5e-4,5e-4)
+        hparams["mod_lr"] = (1e-4,1e-4)
         hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
         hparams['1hid'] = (200,200)
         hparams['2hid'] = (None,None) # 50,4 or 25 8
@@ -165,7 +171,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['rsc_b_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
         # final batch 개수는 hparams['num_smallmetaset']*class 개수보다 작아야한다.
         hparams['small_batch'] = (9,9) # final batch number = x*(도메인개수-1) = else문의 개수와 같아야함.,
-        hparams['batch_size'] = (48,48)
+        hparams['batch_size'] = (64,64)
         # best parameter
 
         # hparams['rsc_b_drop_factor'] = (0.035,0.035)

@@ -942,6 +942,7 @@ class CMWN_RSC(ERM):
 
         self.num_domains = num_domains
         self.checknan = lambda x: 0 if torch.isnan(x) else x
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,hparams['stepepoch'],0.1)
 
     def mkchart(self, chart, imgnum, d, ds, y, ys, loss, metaloss, weit):
         with torch.no_grad():
@@ -1148,7 +1149,7 @@ class CMWN_RSC(ERM):
         imgnum[:,:,-1] = total_percls # accuracy per batch.
 
         torch.cuda.empty_cache()
-        return {'loss': weighted_loss.item(),'chart':(chart,imgnum)}
+        return {'loss': weighted_loss.item(),'chart':(chart,imgnum),'sche':self.scheduler}
 
 
 class MFNet(torch.nn.Module):
