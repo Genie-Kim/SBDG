@@ -130,7 +130,7 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     #case1
     hlist1 = ['"1hid":100','"1hid":150','"1hid":50']
     hlist5 = ['"batch_size":128']
-    hlist2 = ['"num_smallmetaset":"6"','"num_smallmetaset":"12"']
+    hlist2 = ['"num_smallmetaset":6','"num_smallmetaset":12']
     hlist3 = ['"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":5e-6','"mod_lr":1e-6']
     hlist4 = ['"lr":1e-4']
     hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
