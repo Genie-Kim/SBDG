@@ -160,11 +160,11 @@ def _hparams(algorithm, dataset, random_state):
         hparams['batch_size'] = (128,128)
         hparams['stepepoch'] = (900, 900)
         hparams['alexnetpretrained']=(True,True)
-        hparams["lr"] = (5e-4, 5e-4)
+        hparams["lr"] = (1e-4, 1e-4)
         hparams['inforecord'] = (4, 4)
-        hparams["mod_lr"] = (1e-4,1e-4)
-        hparams['num_smallmetaset'] = (24,24) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
-        hparams['1hid'] = (200,200)
+        hparams["mod_lr"] = (1e-6,1e-6)
+        hparams['num_smallmetaset'] = (6,6) # # of image of class per domain,  minimum dom cls number*0.8보다 작아야함.
+        hparams['1hid'] = (150,150)
         hparams['2hid'] = (None,None) # 50,4 or 25 8
         hparams['clscond'] = (False,False)
         hparams['rsc_f_drop_factor'] = (1/3, random_state.uniform(0, 0.5))

@@ -127,18 +127,21 @@ def make_args_list(n_trials, dataset_names, algorithms, n_hparams, steps,
 def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     data_dir, hparams,checkpoint_freq):
 
-    #case1
-    hlist1 = ['"1hid":100','"1hid":150','"1hid":50']
+    # #case1
+    # hlist1 = ['"1hid":100','"1hid":150','"1hid":50']
+    # hlist5 = ['"batch_size":128']
+    # hlist2 = ['"num_smallmetaset":6','"num_smallmetaset":12']
+    # hlist3 = ['"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":5e-6','"mod_lr":1e-6']
+    # hlist4 = ['"lr":1e-4']
+    # hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
+
+    #case2
+    hlist1 = ['"1hid":70,"2hid":6','"1hid":50,"2hid":10','"1hid":30,"2hid":20']
     hlist5 = ['"batch_size":128']
     hlist2 = ['"num_smallmetaset":6','"num_smallmetaset":12']
     hlist3 = ['"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":5e-6','"mod_lr":1e-6']
     hlist4 = ['"lr":1e-4']
     hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
-
-    # #case2
-    # hlist1 = ['"mod_lr":1e-4','"mod_lr":1e-5','"mod_lr":5e-6']
-    # hlist2 = ['"hidden_neurons":100','"hidden_neurons":200','"hidden_neurons":200']
-    # hparam_list = list(product(hlist1, hlist2))
 
     # #case3
     # hlist1 = ['"1hid":100','"1hid":200','"1hid":300']
