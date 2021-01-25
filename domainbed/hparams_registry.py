@@ -82,7 +82,8 @@ def _hparams(algorithm, dataset, random_state):
         hparams['inforecord'] = (2, 2)
         hparams['rsc_f_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
         hparams['rsc_b_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
-        hparams['batch_size'] = (48, 48)
+        hparams['batch_size'] = (128, 128)
+        hparams['lr'] = (1e-4, 1e-4)
         # # best parameter
         # hparams['batch_size'] = (44, 44)
         # hparams['rsc_b_drop_factor'] = (0.035,0.035)
@@ -167,6 +168,7 @@ def _hparams(algorithm, dataset, random_state):
         hparams['1hid'] = (150,150)
         hparams['2hid'] = (None,None) # 50,4 or 25 8
         hparams['clscond'] = (False,False)
+        hparams['domcond'] = (False,False)
         hparams['rsc_f_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
         hparams['rsc_b_drop_factor'] = (1/3, random_state.uniform(0, 0.5))
         # final batch 개수는 hparams['num_smallmetaset']*class 개수보다 작아야한다.

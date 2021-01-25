@@ -924,10 +924,12 @@ class CMWN_RSC(ERM):
         self.drop_b = (1 - hparams['rsc_b_drop_factor']) * 100
         self.num_classes = num_classes
 
-        if hparams['clscond']:
-            mlp_input = 1 + num_classes + num_domains
-        else:
+        if hparams['domcond']:
             mlp_input = 1 + num_domains
+            if hparams['clscond']:
+                mlp_input = 1 + num_classes + num_domains
+        else:
+            mlp_input = 1
 
         if hparams['2hid'] !=None:
             self.weight_net = CWNet(mlp_input, hparams['1hid'], 1,hidden2 = hparams['2hid']).cuda()
@@ -1066,11 +1068,14 @@ class CMWN_RSC(ERM):
         # first inner update
         innerloss = self.miniupdate(all_x, all_y, all_o,inner_net_feature,inner_net_classfier)
         innerloss = torch.reshape(innerloss, (len(innerloss), 1))
-        if self.hparams['clscond']:
+        if self.hparams['domcond']:
+            weight_input = torch.cat((innerloss, domcond), 1)
+            v_lambda = self.weight_net(weight_input.data)  # calculate weight
+        elif self.hparams['clscond']:
             weight_input = torch.cat((innerloss, domcond, clscond), 1)
             v_lambda = self.weight_net(weight_input.data)  # calculate weight
         else:
-            weight_input = torch.cat((innerloss, domcond), 1)
+            weight_input = innerloss
             v_lambda = self.weight_net(weight_input.data)  # calculate weight
 
         weighted_loss = torch.mean(torch.mul(innerloss, v_lambda))
@@ -1129,12 +1134,16 @@ class CMWN_RSC(ERM):
         loss = torch.reshape(loss, (len(loss), 1))
 
         with torch.no_grad():
-            if self.hparams['clscond']:
+            if self.hparams['domcond']:
+                weight_input = torch.cat((loss, domcond), 1)
+                v_lambda_new = self.weight_net(weight_input.data)
+            elif self.hparams['clscond']:
                 weight_input = torch.cat((loss, domcond, clscond), 1)
                 v_lambda_new = self.weight_net(weight_input.data)  # calculate weight
             else:
-                weight_input = torch.cat((loss, domcond), 1)
+                weight_input = loss
                 v_lambda_new = self.weight_net(weight_input.data)
+
 
         weit = v_lambda_new.data
         weighted_loss = torch.mean(torch.mul(loss, v_lambda_new))
