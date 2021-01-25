@@ -135,13 +135,10 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
     # hlist4 = ['"lr":1e-4']
     # hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
 
-    #case2
-    hlist1 = ['"1hid":70,"2hid":6','"1hid":50,"2hid":10','"1hid":30,"2hid":20']
-    hlist5 = ['"batch_size":128']
-    hlist2 = ['"num_smallmetaset":6','"num_smallmetaset":12']
-    hlist3 = ['"mod_lr":5e-5','"mod_lr":1e-5','"mod_lr":5e-6','"mod_lr":1e-6']
-    hlist4 = ['"lr":1e-4']
-    hparam_list = list(product(hlist1, hlist2,hlist3,hlist4,hlist5))
+    #case2t
+    hlist1 = ['"1hid":50,"domcond":"False"']
+    hlist5 = ['"num_smallmetaset":12,"mod_lr":5e-5,"lr":1e-4,"batch_size":128']
+    hparam_list = list(product(hlist1, hlist5))
 
     # #case3
     # hlist1 = ['"1hid":100','"1hid":200','"1hid":300']
@@ -159,7 +156,7 @@ def make_args_list_forht(n_trials, dataset_names, algorithms, n_hparams, steps,
                 # all_test_envs = all_test_env_combinations(
                 #     datasets.num_environments(dataset))
                 all_test_envs = [[x] for x in range(datasets.num_environments(dataset))] # for only one test envs
-                # all_test_envs = [3] # for hiper parameter search(test 1 dom)
+                # all_test_envs = [0] # for hiper parameter search(test 1 dom)
                 for test_envs in all_test_envs:
                     for hparams in hparam_list:
                         if type(hparams)==str:
