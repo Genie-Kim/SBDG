@@ -20,5 +20,5 @@ This repository provides the official PyTorch implementation of the following pa
 
 
 ## Acknowledgments
-Our implementation is heavily derived from [DomainBed](https://github.com/facebookresearch/DomainBed) and [Meta-Weight-Net](https://github.com/xjtushujun/meta-weight-net).
+Our implementation is heavily derived from [facebookresearch/DomainBed](https://github.com/facebookresearch/DomainBed) and [xjtushujun/meta-weight-net](https://github.com/xjtushujun/meta-weight-net).
 Thanks to the DomainBed and Meta-Weight-Net implementations.
