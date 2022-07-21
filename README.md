@@ -11,7 +11,11 @@ This repository provides the official PyTorch implementation of the following pa
 *Domain generalization aims to learn a prediction model on multi-domain source data such that the model can generalize to a target domain with unknown statistics. Most existing approaches have been developed under the assumption that the source data is well-balanced in terms of both domain and class. However, real-world training data collected with different composition biases often exhibits severe distribution gaps for domain and class, leading to substantial performance degradation. In this paper, we propose a self-balanced domain generalization framework that adaptively learns the weights of losses to alleviate the bias caused by different distributions of the multi-domain source data. The self-balanced scheme is based on an auxiliary reweighting network that iteratively updates the weight of loss conditioned on the domain and class information by leveraging balanced meta data. Experimental results demonstrate the effectiveness of our method overwhelming state-of-the-art works for domain generalization.*<br>
 
 <p align="center">
-  <img src="imgs/fig2.pdf" />
+  <img src="imgs/fig2.png" />
+</p>
+
+<p align="center">
+  <img src="imgs/fig3.png" />
 </p>
 
 
