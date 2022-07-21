@@ -3,7 +3,7 @@ This repository provides the official PyTorch implementation of the following pa
 > Self-balanced Learning For Domain Generalization<br>
 > Jin Kim (Yonsei Univ.), Jiyoung Lee (NAVER AI Lab), Jungin Park (Yonsei Univ.)<br>
 > Dongbo Min (Ewha Womans Univ.), Kwanghoon Sohn* (Yonsei Univ.) (*: corresponding author)<br>
-> ICIP 2021, Accepted as Poster<br>
+> IEEE International Conference on Image Processing (ICIP 2021), Accepted as Poster<br>
 
 > Paper: [arxiv](https://arxiv.org/abs/2108.13597)<br>
 
