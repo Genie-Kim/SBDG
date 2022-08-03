@@ -1,4 +1,4 @@
-## SBDG (ICIP 2021): Official Project Webpage
+# SBDG (ICIP 2021): Official Project Webpage
 This repository provides the official PyTorch implementation of the following paper:
 > Self-balanced Learning For Domain Generalization<br>
 > Jin Kim (Yonsei Univ.), Jiyoung Lee (NAVER AI Lab), Jungin Park (Yonsei Univ.)<br>
